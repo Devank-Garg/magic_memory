@@ -27,7 +27,7 @@ from rich.rule import Rule
 from agent_memory.config import MemoryConfig
 from agent_memory.storage.sqlite_store import SQLiteStore
 from agent_memory.storage.chroma_store import ChromaStore
-from ollama_client import check_ollama
+from agent_memory.providers import OllamaProvider
 from chat_engine import process_message
 from agent_memory.layers import core, summary, conversation
 
@@ -92,7 +92,7 @@ async def chat_loop(user_id: str, debug: bool = False):
 
     # Check Ollama
     console.print("[dim]Checking Ollama...[/dim]", end=" ")
-    ok = await check_ollama(config)
+    ok = await OllamaProvider(config=config).health_check()
     if not ok:
         console.print(f"[red]✗[/red]")
         console.print(

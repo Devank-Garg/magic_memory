@@ -83,3 +83,40 @@ Each entry maps to a phase and a specific task.
 | `tests/unit/layers/test_summary.py` | `save`/`load` roundtrip, `render_for_prompt` empty state |
 | `tests/unit/layers/test_archival.py` | `archive_message` non-fatal on failure, `search` returns empty on empty collection |
 | `tests/unit/test_command_parser.py` | All three command types, case insensitivity, no commands passthrough, malformed tag ignored |
+
+---
+
+## Phase 4 — `BaseLLMProvider` abstraction
+*Completed. Fixed 1 bug. 12 new tests (44 total passing).*
+
+**Goal:** Decouple LLM calls from Ollama-specific code so any backend (OpenAI, Anthropic, Ollama) can be swapped in via config.
+
+**Bug fixed in this phase:**
+
+| Issue | Description | Fix |
+|---|---|---|
+| #8 | `ollama_client.py` creates a new `httpx.AsyncClient` on every single call — expensive and leaks connections under load | `OllamaProvider` holds a single shared `httpx.AsyncClient` as an instance attribute |
+
+**New files:**
+
+| File | Description |
+|---|---|
+| `src/agent_memory/providers/base.py` | `BaseLLMProvider` ABC with `chat()`, `summarize()`, `health_check()` abstract methods; `LLMOptions` dataclass (temperature, num_ctx, stream) |
+| `src/agent_memory/providers/ollama.py` | `OllamaProvider` — migrates all logic from root `ollama_client.py`; shared `httpx.AsyncClient` (Issue 8 fix) |
+| `src/agent_memory/providers/openai.py` | `OpenAIProvider` stub — raises `NotImplementedError`; ready for Phase 7 implementation |
+| `src/agent_memory/providers/anthropic.py` | `AnthropicProvider` stub — raises `NotImplementedError`; ready for Phase 7 implementation |
+| `src/agent_memory/providers/registry.py` | `create_provider(name, config)` factory — maps `"ollama"` / `"openai"` / `"anthropic"` to provider instances |
+
+**Modified files:**
+
+| File | Change |
+|---|---|
+| `src/agent_memory/providers/__init__.py` | Export `BaseLLMProvider`, `OllamaProvider`, `create_provider` |
+| `chat_engine.py` | Import `OllamaProvider` from `agent_memory.providers`; remove `from ollama_client import chat, summarize`; provider passed in or created from config |
+
+**New tests:**
+
+| File | What it tests |
+|---|---|
+| `tests/unit/providers/test_ollama.py` | `OllamaProvider.chat` mocks `httpx`; verifies shared client reuse; streaming path |
+| `tests/unit/providers/test_registry.py` | `create_provider("ollama", ...)` returns `OllamaProvider`; unknown name raises `ValueError` |

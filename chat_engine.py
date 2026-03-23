@@ -14,7 +14,7 @@ import asyncio
 from agent_memory.config import MemoryConfig
 from agent_memory.layers import conversation, archival, summary
 from agent_memory import context_assembler
-from ollama_client import chat, summarize
+from agent_memory.providers import OllamaProvider
 from agent_memory.command_parser import parse_and_apply
 
 
@@ -24,6 +24,7 @@ async def process_message(
     stream: bool = True,
     show_stats: bool = False,
     config: MemoryConfig = None,
+    provider: OllamaProvider | None = None,
 ) -> tuple[str, list]:
     """
     Full pipeline for one user message → response.
@@ -39,6 +40,7 @@ async def process_message(
         (cleaned_response, memory_actions)
     """
     config = config or MemoryConfig()
+    provider = provider or OllamaProvider(config=config)
 
     # ── Step 1: Show context stats (debug mode) ────────────────────────────────
     if show_stats:
@@ -50,7 +52,8 @@ async def process_message(
     messages = context_assembler.build_context(user_id, user_message, config)
 
     # ── Step 3: Call LLM ───────────────────────────────────────────────────────
-    raw_response = await chat(messages, stream=stream, config=config)
+    from agent_memory.providers.base import LLMOptions
+    raw_response = await provider.chat(messages, LLMOptions(stream=stream))
 
     # ── Step 4: Parse + apply memory commands ──────────────────────────────────
     cleaned_response, memory_actions = parse_and_apply(user_id, raw_response)
@@ -65,18 +68,19 @@ async def process_message(
 
     # ── Step 7: Trigger summarization if needed ────────────────────────────────
     if context_assembler.should_summarize(user_id, config):
-        await _run_summarization(user_id, config)
+        await _run_summarization(user_id, config, provider)
 
     return cleaned_response, memory_actions
 
 
-async def _run_summarization(user_id: str, config: MemoryConfig = None):
+async def _run_summarization(user_id: str, config: MemoryConfig = None, provider: OllamaProvider | None = None):
     """Compress old conversation turns into a rolling summary."""
     config = config or MemoryConfig()
+    provider = provider or OllamaProvider(config=config)
     turns_to_summarize = context_assembler.get_turns_to_summarize(user_id, config)
     if not turns_to_summarize:
         return
 
-    summary_text = await summarize(turns_to_summarize, config)
+    summary_text = await provider.summarize(turns_to_summarize)
     total_turns  = conversation.get_message_count(user_id)
     summary.save(user_id, summary_text, total_turns)
