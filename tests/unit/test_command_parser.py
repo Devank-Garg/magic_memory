@@ -63,3 +63,19 @@ def test_malformed_tag_not_matched():
     cleaned, actions, _ = _parse("[REMEMBER]  [REMEMBER:]  plain text")
     assert actions == []
     assert cleaned.strip() != ""
+
+
+def test_markdown_bold_command_stripped():
+    """**[NAME: Alice]** and **[REMEMBER: x]** should be fully removed."""
+    cleaned, actions, mock_core = _parse("Hello! **[NAME: Alice]** Hope you enjoy.")
+    assert "**" not in cleaned
+    assert "[NAME:" not in cleaned
+    assert len(actions) == 1
+    mock_core.set_user_name.assert_called_once_with("test_user", "Alice")
+
+
+def test_markdown_italic_command_stripped():
+    cleaned, actions, _ = _parse("Sure! *[REMEMBER: likes cats]*")
+    assert "*" not in cleaned
+    assert "[REMEMBER:" not in cleaned
+    assert len(actions) == 1

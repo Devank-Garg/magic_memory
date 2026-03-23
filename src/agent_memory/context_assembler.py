@@ -43,14 +43,19 @@ def build_context(user_id: str, current_user_message: str, config: MemoryConfig 
         "\n" + summary_block if summary_block else "",
         "\n" + archival_block if archival_block else "",
         """
+## BEHAVIOUR
+- Respond naturally and concisely to what the user actually said.
+- Your memory context is background knowledge — do NOT recap, list, or discuss it
+  unless the user explicitly asks (e.g. "what do you know about me?").
+- Keep responses short unless the user asks for detail.
+
 ## MEMORY COMMANDS
-You may store information by appending ONE command at the very end of your response:
-  [REMEMBER: <fact>]   — only for facts the user explicitly told you this conversation
+You may append ONE command at the very end of your response (never mid-response):
+  [REMEMBER: <fact>]   — only for facts the user explicitly told you this turn
   [NOTE: <text>]       — update your working notes
   [NAME: <name>]       — only when the user directly tells you their name
 
-IMPORTANT: Never invent or assume facts. Only use these commands when the user has
-explicitly shared the information. Never use them as answers to questions.
+NEVER invent facts. NEVER use these as answers. NEVER wrap them in markdown formatting.
 """
     ]
 
