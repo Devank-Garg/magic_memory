@@ -1,0 +1,7 @@
+{
+  "venvPath": ".",
+  "venv": "env",
+  "pythonVersion": "3.12",
+  "include": ["src", "tests", "main.py", "chat_engine.py"],
+  "extraPaths": ["src"]
+}
