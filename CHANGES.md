@@ -120,3 +120,37 @@ Each entry maps to a phase and a specific task.
 |---|---|
 | `tests/unit/providers/test_ollama.py` | `OllamaProvider.chat` mocks `httpx`; verifies shared client reuse; streaming path |
 | `tests/unit/providers/test_registry.py` | `create_provider("ollama", ...)` returns `OllamaProvider`; unknown name raises `ValueError` |
+
+---
+
+## Phase 5 — `MemoryEngine` class
+*Completed. Fixed 1 bug. 14 new tests (58 total passing).*
+
+**Goal:** Expose a clean, single-class public API so library consumers never need to touch layers, assembler, or chat_engine directly.
+
+**Bug fixed in this phase:**
+
+| Issue | Description | Fix |
+|---|---|---|
+| #2 | `context_assembler.build_context` does not guard against a negative token budget — if the system prompt alone exceeds `token_budget`, `available_for_history` goes negative, causing `reversed()` to silently include zero messages | Clamp `available_for_history = max(0, budget - current_msg_tokens - 100)` and log a warning when system prompt exceeds budget |
+
+**New files:**
+
+| File | Description |
+|---|---|
+| `src/agent_memory/types.py` | `MemoryAction` dataclass (type, value); `MemoryResponse` dataclass (response, memory_actions); `MemoryState` dataclass (core, summary, message_count) — clean return types for the public API |
+| `src/agent_memory/engine.py` | `MemoryEngine` class — single entry point for library consumers. `__init__(config, provider)`, `async process_message(user_id, user_message, stream) -> MemoryResponse`, `get_memory_state(user_id) -> MemoryState`, `reset_user(user_id)` |
+
+**Modified files:**
+
+| File | Change |
+|---|---|
+| `src/agent_memory/context_assembler.py` | Clamp `available_for_history` to `>= 0`; log warning when budget is exceeded (Issue 2 fix) |
+| `src/agent_memory/__init__.py` | Export `MemoryEngine`, `MemoryConfig`, `MemoryResponse`, `MemoryAction`, `MemoryState`, `create_provider` |
+
+**New tests:**
+
+| File | What it tests |
+|---|---|
+| `tests/unit/test_engine.py` | `process_message` returns `MemoryResponse`; `memory_actions` list populated when commands present; `get_memory_state` returns correct counts; `reset_user` clears state |
+| `tests/unit/test_context_assembler.py` | Budget overflow: system prompt > budget still returns valid messages list; `available_for_history` never negative |

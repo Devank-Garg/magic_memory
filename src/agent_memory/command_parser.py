@@ -11,6 +11,7 @@ Commands the LLM can issue (at end of response):
 
 import re
 from agent_memory.layers import core
+from agent_memory.types import MemoryAction
 
 
 COMMAND_PATTERN = re.compile(
@@ -19,15 +20,15 @@ COMMAND_PATTERN = re.compile(
 )
 
 
-def parse_and_apply(user_id: str, response_text: str) -> tuple[str, list[str]]:
+def parse_and_apply(user_id: str, response_text: str) -> tuple[str, list[MemoryAction]]:
     """
     Extract and apply memory commands from LLM response.
 
     Returns:
       - cleaned_response: response with commands stripped out
-      - actions: list of human-readable descriptions of what was stored
+      - actions: list of MemoryAction describing what was stored
     """
-    actions = []
+    actions: list[MemoryAction] = []
     commands = COMMAND_PATTERN.findall(response_text)
 
     for cmd_type, cmd_value in commands:
@@ -36,15 +37,15 @@ def parse_and_apply(user_id: str, response_text: str) -> tuple[str, list[str]]:
 
         if cmd_type == "REMEMBER":
             core.update_fact(user_id, cmd_value)
-            actions.append(f"📌 Remembered: {cmd_value}")
+            actions.append(MemoryAction(type="remember", value=cmd_value))
 
         elif cmd_type == "NOTE":
             core.update_scratch(user_id, cmd_value)
-            actions.append(f"📝 Note updated: {cmd_value}")
+            actions.append(MemoryAction(type="note", value=cmd_value))
 
         elif cmd_type == "NAME":
             core.set_user_name(user_id, cmd_value)
-            actions.append(f"👤 Name stored: {cmd_value}")
+            actions.append(MemoryAction(type="name", value=cmd_value))
 
     # Strip commands from the displayed response
     cleaned = COMMAND_PATTERN.sub("", response_text).strip()

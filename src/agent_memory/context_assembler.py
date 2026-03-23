@@ -14,9 +14,13 @@ Priority order (highest to lowest):
 Total budget: configurable via MemoryConfig (default 3000 tokens)
 """
 
+import logging
+
 from agent_memory.config import MemoryConfig
 from agent_memory.token_counter import count_tokens, count_messages_tokens
 from agent_memory.layers import core, summary, archival, conversation
+
+logger = logging.getLogger(__name__)
 
 
 def build_context(user_id: str, current_user_message: str, config: MemoryConfig = None) -> list[dict]:
@@ -52,13 +56,22 @@ These commands will be parsed and executed after your response. Use them sparing
     system_tokens = count_tokens(system_prompt)
     budget -= system_tokens
 
+    # Issue 2 fix: guard against negative budget if system prompt alone exceeds limit
+    if budget <= 0:
+        logger.warning(
+            "System prompt (%d tokens) exceeds token_budget (%d). "
+            "No history will be included. Consider raising token_budget.",
+            system_tokens, config.token_budget,
+        )
+
     messages.append({"role": "system", "content": system_prompt})
 
     # ── 2. RECENT MESSAGES (Sliding Window) ────────────────────────────────────
     recent = conversation.get_recent_messages(user_id, config.recent_turns_window * 2)
 
     current_msg_tokens = count_tokens(current_user_message) + 10
-    available_for_history = budget - current_msg_tokens - 100  # 100 token safety margin
+    # Issue 2 fix: clamp so available_for_history is never negative
+    available_for_history = max(0, budget - current_msg_tokens - 100)  # 100 token safety margin
 
     history_window = []
     token_used = 0

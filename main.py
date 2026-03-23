@@ -153,7 +153,8 @@ async def chat_loop(user_id: str, debug: bool = False):
         if memory_actions:
             console.print()
             for action in memory_actions:
-                console.print(f"  [dim]{action}[/dim]")
+                icon = {"remember": "📌", "note": "📝", "name": "👤"}.get(action.type, "•")
+                console.print(f"  [dim]{icon} {action}[/dim]")
 
         console.print()
 
