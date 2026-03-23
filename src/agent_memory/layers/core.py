@@ -17,7 +17,9 @@ import json
 import sqlite3
 from pathlib import Path
 
-DB_PATH = Path(__file__).parents[3] / "data" / "conversations.db"
+from agent_memory.config import MemoryConfig
+
+DB_PATH = MemoryConfig().db_path
 
 
 def _get_conn() -> sqlite3.Connection:

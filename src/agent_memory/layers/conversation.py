@@ -11,8 +11,9 @@ import json
 import time
 from pathlib import Path
 
+from agent_memory.config import MemoryConfig
 
-DB_PATH = Path(__file__).parents[3] / "data" / "conversations.db"
+DB_PATH = MemoryConfig().db_path
 
 
 def _get_conn(user_id: str) -> sqlite3.Connection:

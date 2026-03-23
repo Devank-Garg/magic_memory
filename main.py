@@ -25,6 +25,7 @@ from rich.panel import Panel
 from rich.text import Text
 from rich.rule import Rule
 
+from agent_memory.config import MemoryConfig
 from ollama_client import check_ollama
 from chat_engine import process_message
 from agent_memory.layers import core, summary, conversation
@@ -32,11 +33,12 @@ from agent_memory.layers import core, summary, conversation
 console = Console()
 
 
-def print_banner(user_id: str):
+def print_banner(user_id: str, config: MemoryConfig = None):
+    config = config or MemoryConfig()
     console.print()
     console.print(Panel.fit(
         "[bold cyan]∞ Infinite Context Chat[/bold cyan]\n"
-        f"[dim]User: [bold]{user_id}[/bold]  |  Model: ministral-3:3b[/dim]\n"
+        f"[dim]User: [bold]{user_id}[/bold]  |  Model: {config.model}[/dim]\n"
         "[dim]Type [bold white]exit[/bold white] to quit  |  "
         "[bold white]/memory[/bold white] to inspect memory  |  "
         "[bold white]/reset[/bold white] to wipe[/dim]",
@@ -101,16 +103,17 @@ def reset_user(user_id: str):
 
 
 async def chat_loop(user_id: str, debug: bool = False):
-    print_banner(user_id)
-    
+    config = MemoryConfig.from_env()
+    print_banner(user_id, config)
+
     # Check Ollama
     console.print("[dim]Checking Ollama...[/dim]", end=" ")
-    ok = await check_ollama()
+    ok = await check_ollama(config)
     if not ok:
         console.print(f"[red]✗[/red]")
         console.print(
-            "[red bold]Ollama not running or ministral-3:3b not found.[/red bold]\n"
-            "Run: [bold white]ollama pull ministral-3:3b[/bold white]\n"
+            f"[red bold]Ollama not running or {config.model} not found.[/red bold]\n"
+            f"Run: [bold white]ollama pull {config.model}[/bold white]\n"
             "Then: [bold white]OLLAMA_NUM_PARALLEL=2 ollama serve[/bold white]"
         )
         return
@@ -119,7 +122,6 @@ async def chat_loop(user_id: str, debug: bool = False):
 
     while True:
         try:
-            # User input
             user_input = console.input("[bold white]You:[/bold white] ").strip()
         except (KeyboardInterrupt, EOFError):
             console.print("\n[dim]Goodbye.[/dim]")
@@ -150,13 +152,14 @@ async def chat_loop(user_id: str, debug: bool = False):
 
         # Process through memory pipeline
         console.print(f"\n[bold green]Assistant:[/bold green] ", end="")
-        
+
         try:
             cleaned_response, memory_actions = await process_message(
                 user_id=user_id,
                 user_message=user_input,
                 stream=True,
-                show_stats=debug
+                show_stats=debug,
+                config=config,
             )
         except Exception as e:
             console.print(f"\n[red]Error: {e}[/red]")

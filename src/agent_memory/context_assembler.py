@@ -11,32 +11,27 @@ Priority order (highest to lowest):
   4. Recent messages (sliding window, last N turns)  ~800 tokens  [trimmed, not dropped]
   5. Current user message                            ~100 tokens  [never dropped]
 
-Total budget: configurable, default 3000 tokens (leaving ~1000 for response)
+Total budget: configurable via MemoryConfig (default 3000 tokens)
 """
 
+from agent_memory.config import MemoryConfig
 from agent_memory.token_counter import count_tokens, count_messages_tokens
 from agent_memory.layers import core, summary, archival, conversation
 
 
-# ── Configuration ──────────────────────────────────────────────────────────────
-TOTAL_CONTEXT_BUDGET  = 3000   # tokens sent to model (input side)
-RESPONSE_RESERVE      = 1000   # tokens reserved for model response
-RECENT_TURNS_DEFAULT  = 10     # number of recent turns to include verbatim
-SUMMARIZE_AFTER_TURNS = 15     # trigger summarization after N total turns
-
-
-def build_context(user_id: str, current_user_message: str) -> list[dict]:
+def build_context(user_id: str, current_user_message: str, config: MemoryConfig = None) -> list[dict]:
     """
     Build the final messages list for the LLM call.
 
     Returns: list of {role, content} ready to send to Ollama
     """
-    budget = TOTAL_CONTEXT_BUDGET
+    config = config or MemoryConfig()
+    budget = config.token_budget
     messages = []
 
     # ── 1. SYSTEM PROMPT (Core Memory) — always present ───────────────────────
-    core_block    = core.render_for_prompt(user_id)
-    summary_block = summary.render_for_prompt(user_id)
+    core_block     = core.render_for_prompt(user_id)
+    summary_block  = summary.render_for_prompt(user_id)
     archival_block = archival.render_for_prompt(user_id, current_user_message)
 
     system_parts = [
@@ -60,10 +55,8 @@ These commands will be parsed and executed after your response. Use them sparing
     messages.append({"role": "system", "content": system_prompt})
 
     # ── 2. RECENT MESSAGES (Sliding Window) ────────────────────────────────────
-    # Get recent turns, then trim to fit budget
-    recent = conversation.get_recent_messages(user_id, RECENT_TURNS_DEFAULT * 2)
+    recent = conversation.get_recent_messages(user_id, config.recent_turns_window * 2)
 
-    # Build recent window that fits in budget (leave room for current message)
     current_msg_tokens = count_tokens(current_user_message) + 10
     available_for_history = budget - current_msg_tokens - 100  # 100 token safety margin
 
@@ -85,28 +78,30 @@ These commands will be parsed and executed after your response. Use them sparing
     return messages
 
 
-def should_summarize(user_id: str) -> bool:
+def should_summarize(user_id: str, config: MemoryConfig = None) -> bool:
     """Returns True if we should trigger a summarization pass."""
+    config = config or MemoryConfig()
     total_turns = conversation.get_message_count(user_id)
     existing_summary = summary.load(user_id)
     turns_since_summary = total_turns - existing_summary["turn_count"]
-    return turns_since_summary >= SUMMARIZE_AFTER_TURNS
+    return turns_since_summary >= config.summarize_after_turns
 
 
-def get_turns_to_summarize(user_id: str) -> list[dict]:
+def get_turns_to_summarize(user_id: str, config: MemoryConfig = None) -> list[dict]:
     """Get the old turns that should be summarized (everything except recent window)."""
+    config = config or MemoryConfig()
     all_msgs = conversation.get_all_messages(user_id)
-    # Keep last RECENT_TURNS_DEFAULT*2 verbatim, summarize everything older
-    cutoff = max(0, len(all_msgs) - RECENT_TURNS_DEFAULT * 2)
+    cutoff = max(0, len(all_msgs) - config.recent_turns_window * 2)
     return all_msgs[:cutoff]
 
 
-def get_context_stats(user_id: str, current_message: str) -> dict:
+def get_context_stats(user_id: str, current_message: str, config: MemoryConfig = None) -> dict:
     """Debug helper — returns token breakdown of current context."""
-    msgs = build_context(user_id, current_message)
+    config = config or MemoryConfig()
+    msgs = build_context(user_id, current_message, config)
     return {
         "total_messages": len(msgs),
         "total_tokens": count_messages_tokens(msgs),
-        "budget": TOTAL_CONTEXT_BUDGET,
+        "budget": config.token_budget,
         "breakdown": {m["role"]: count_tokens(m["content"]) for m in msgs}
     }

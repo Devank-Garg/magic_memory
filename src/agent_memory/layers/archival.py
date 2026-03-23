@@ -15,7 +15,9 @@ import hashlib
 import time
 from pathlib import Path
 
-DB_PATH = Path(__file__).parents[3] / "data" / "chroma"
+from agent_memory.config import MemoryConfig
+
+DB_PATH = MemoryConfig().chroma_path
 
 
 def _get_client():
@@ -32,10 +34,9 @@ def _get_collection(user_id: str):
     )
 
 
-def _get_embedder():
+def _get_embedder(model: str = MemoryConfig().embedder_model):
     from sentence_transformers import SentenceTransformer
-    # Small, fast model — good for local use
-    return SentenceTransformer("all-MiniLM-L6-v2")
+    return SentenceTransformer(model)
 
 
 _embedder = None

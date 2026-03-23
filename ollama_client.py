@@ -10,19 +10,18 @@ Handles:
 import json
 import httpx
 
-OLLAMA_BASE  = "http://localhost:11434"
-MODEL        = "ministral-3:3b"
-TIMEOUT      = 120.0
+from agent_memory.config import MemoryConfig
 
 
-async def chat(messages: list[dict], stream: bool = False) -> str:
+async def chat(messages: list[dict], stream: bool = False, config: MemoryConfig = None) -> str:
     """
-    Send messages to Ollama. 
+    Send messages to Ollama.
     stream=False: returns full response string
     stream=True:  prints tokens as they arrive, returns full string
     """
+    config = config or MemoryConfig()
     payload = {
-        "model": MODEL,
+        "model": config.model,
         "messages": messages,
         "stream": stream,
         "options": {
@@ -31,14 +30,14 @@ async def chat(messages: list[dict], stream: bool = False) -> str:
         }
     }
 
-    async with httpx.AsyncClient(timeout=TIMEOUT) as client:
+    async with httpx.AsyncClient(timeout=config.timeout) as client:
         if not stream:
-            resp = await client.post(f"{OLLAMA_BASE}/api/chat", json=payload)
+            resp = await client.post(f"{config.ollama_base}/api/chat", json=payload)
             resp.raise_for_status()
             return resp.json()["message"]["content"]
         else:
             full_response = []
-            async with client.stream("POST", f"{OLLAMA_BASE}/api/chat", json=payload) as resp:
+            async with client.stream("POST", f"{config.ollama_base}/api/chat", json=payload) as resp:
                 resp.raise_for_status()
                 async for line in resp.aiter_lines():
                     if not line:
@@ -57,13 +56,14 @@ async def chat(messages: list[dict], stream: bool = False) -> str:
             return "".join(full_response)
 
 
-async def summarize(messages_to_summarize: list[dict]) -> str:
+async def summarize(messages_to_summarize: list[dict], config: MemoryConfig = None) -> str:
     """Call LLM specifically for summarization (non-streaming, lower temp)."""
+    config = config or MemoryConfig()
     from agent_memory.layers.summary import build_summarize_request
     prompt = build_summarize_request(messages_to_summarize)
-    
+
     payload = {
-        "model": MODEL,
+        "model": config.model,
         "messages": [{"role": "user", "content": prompt}],
         "stream": False,
         "options": {
@@ -71,19 +71,20 @@ async def summarize(messages_to_summarize: list[dict]) -> str:
             "temperature": 0.3,   # lower temp for factual summaries
         }
     }
-    
-    async with httpx.AsyncClient(timeout=TIMEOUT) as client:
-        resp = await client.post(f"{OLLAMA_BASE}/api/chat", json=payload)
+
+    async with httpx.AsyncClient(timeout=config.timeout) as client:
+        resp = await client.post(f"{config.ollama_base}/api/chat", json=payload)
         resp.raise_for_status()
         return resp.json()["message"]["content"]
 
 
-async def check_ollama() -> bool:
+async def check_ollama(config: MemoryConfig = None) -> bool:
     """Verify Ollama is running and model is available."""
+    config = config or MemoryConfig()
     try:
         async with httpx.AsyncClient(timeout=5.0) as client:
-            resp = await client.get(f"{OLLAMA_BASE}/api/tags")
+            resp = await client.get(f"{config.ollama_base}/api/tags")
             models = [m["name"] for m in resp.json().get("models", [])]
-            return any(MODEL in m for m in models)
+            return any(config.model in m for m in models)
     except Exception:
         return False
