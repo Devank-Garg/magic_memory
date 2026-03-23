@@ -26,7 +26,7 @@ Each entry maps to a phase and a specific task.
 ---
 
 ## Phase 2 — `MemoryConfig` dataclass
-*In progress.*
+*Completed.*
 
 | Task | Change |
 |---|---|
@@ -39,3 +39,47 @@ Each entry maps to a phase and a specific task.
 | `ollama_client.py` | Removed `OLLAMA_BASE`, `MODEL`, `TIMEOUT` constants. All functions accept optional `config: MemoryConfig`; use `config.ollama_base`, `config.model`, `config.timeout`. |
 | `chat_engine.py` | `process_message()` and `_run_summarization()` accept optional `config: MemoryConfig`; pass it through to all callees. Fixed return type annotation to `tuple[str, list]`. |
 | `main.py` | Constructs `config = MemoryConfig.from_env()` at startup; passes to `check_ollama()`, `process_message()`, and `print_banner()`. Banner now shows `config.model` instead of hardcoded string. |
+
+---
+
+## Phase 3 — `SQLiteStore` + `ChromaStore` storage layer
+*Planned. Fixes 5 known bugs from the original code review.*
+
+**Bugs fixed in this phase:**
+
+| Issue | Description | Fix |
+|---|---|---|
+| #3 | `get_recent_messages` used `ORDER BY id DESC` + Python `reversed()` — fragile if row IDs drift | Replace with `SELECT * FROM (... ORDER BY id DESC LIMIT n) ORDER BY id ASC` subquery |
+| #4 | `archive_message` had no error handling — a ChromaDB failure killed the whole message pipeline | Wrap embed+store in `try/except`; log warning, return `None`, treat as non-fatal |
+| #5 | `reset_user()` in `main.py` duplicated `_safe()` sanitization from `conversation.py` | Add `delete_user()` method to `SQLiteStore`; `main.py` calls it instead of raw SQL |
+| #6 | Every function opened and closed its own `sqlite3.Connection` with no context manager | `SQLiteStore` class wraps connection lifecycle in `with` blocks; shared across all layer functions |
+| #7 | `archive_message` did a redundant `collection.get(ids)` check before every insert | Replace check-then-add with `collection.upsert()` — atomic and eliminates the extra round-trip |
+
+**New files:**
+
+| File | Description |
+|---|---|
+| `src/agent_memory/storage/__init__.py` | Storage package |
+| `src/agent_memory/storage/sqlite_store.py` | `SQLiteStore` class — single context-manager-based SQLite connection holder shared across all three SQLite layers. Provides `connection()` context manager, `ensure_table()`, and `delete_user()` |
+| `src/agent_memory/storage/chroma_store.py` | `ChromaStore` class — wraps ChromaDB client and collection access with error boundaries. Provides `get_collection()`, lazy embedder singleton, and `delete_collection()` |
+
+**Modified files:**
+
+| File | Change |
+|---|---|
+| `layers/conversation.py` | Use `SQLiteStore` internally; fix `get_recent_messages` ordering (Issue 3) |
+| `layers/core.py` | Use `SQLiteStore` internally (Issue 6) |
+| `layers/summary.py` | Use `SQLiteStore` internally (Issue 6) |
+| `layers/archival.py` | Use `ChromaStore`; replace `collection.get()` + `add()` with `upsert()` (Issue 7); wrap `archive_message` in `try/except` (Issue 4) |
+| `main.py` | `reset_user()` calls `SQLiteStore.delete_user()` and `ChromaStore.delete_collection()` instead of duplicating `_safe()` (Issue 5) |
+
+**New tests:**
+
+| File | What it tests |
+|---|---|
+| `tests/conftest.py` | Shared fixtures: in-memory SQLite `SQLiteStore`, `MockChromaStore` |
+| `tests/unit/layers/test_conversation.py` | `save_message`, `get_recent_messages` ordering, `get_message_count` |
+| `tests/unit/layers/test_core.py` | `update_fact` dedup + cap, `update_scratch` cap, `set_user_name`, `render_for_prompt` |
+| `tests/unit/layers/test_summary.py` | `save`/`load` roundtrip, `render_for_prompt` empty state |
+| `tests/unit/layers/test_archival.py` | `archive_message` non-fatal on failure, `search` returns empty on empty collection |
+| `tests/unit/test_command_parser.py` | All three command types, case insensitivity, no commands passthrough, malformed tag ignored |
