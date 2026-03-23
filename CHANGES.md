@@ -154,3 +154,20 @@ Each entry maps to a phase and a specific task.
 |---|---|
 | `tests/unit/test_engine.py` | `process_message` returns `MemoryResponse`; `memory_actions` list populated when commands present; `get_memory_state` returns correct counts; `reset_user` clears state |
 | `tests/unit/test_context_assembler.py` | Budget overflow: system prompt > budget still returns valid messages list; `available_for_history` never negative |
+
+---
+
+## Phase 7 — Packaging
+*Planned.*
+
+**Goal:** Make the library installable as `pip install agent-memory` with optional provider extras, add type information, and enforce a coverage gate.
+
+**Tasks:**
+
+| Task | Change |
+|---|---|
+| Optional deps | Add `openai` and `anthropic` extras to `pyproject.toml` — `pip install agent-memory[openai]`, `pip install agent-memory[anthropic]` |
+| `py.typed` | Add empty `src/agent_memory/py.typed` marker so mypy/pyright recognise the package as typed |
+| Coverage gate | Add `pytest-cov` to dev deps; set `--cov-fail-under=80` in `pyproject.toml` |
+| Dead file cleanup | Delete orphaned `ollama_client.py` from repo root (replaced by `OllamaProvider` in Phase 4) |
+| Version bump | `pyproject.toml` version `0.1.0` → `0.2.0` |
