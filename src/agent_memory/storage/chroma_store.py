@@ -38,10 +38,32 @@ class ChromaStore:
         return self._client
 
     def get_embedder(self):
-        """Lazy-load the sentence-transformer model (downloaded once)."""
+        """Lazy-load the sentence-transformer model (singleton per instance)."""
         if self._embedder is None:
-            from sentence_transformers import SentenceTransformer
-            self._embedder = SentenceTransformer(self.embedder_model)
+            import os
+            import warnings
+
+            # Silence HuggingFace hub auth nag and transformers weight-load chatter
+            os.environ.setdefault("TOKENIZERS_PARALLELISM", "false")
+            os.environ.setdefault("HF_HUB_DISABLE_SYMLINKS_WARNING", "1")
+
+            print("🧠 Preparing magic memory potion... (loading semantic model)", flush=True)
+
+            with warnings.catch_warnings():
+                warnings.simplefilter("ignore")
+                # Suppress transformers / sentence-transformers logging
+                import logging as _logging
+                for _noisy in ("sentence_transformers", "transformers", "huggingface_hub"):
+                    _logging.getLogger(_noisy).setLevel(_logging.ERROR)
+
+                from sentence_transformers import SentenceTransformer
+                self._embedder = SentenceTransformer(
+                    self.embedder_model,
+                    tokenizer_kwargs={"clean_up_tokenization_spaces": True},
+                )
+
+            print("✨ Semantic memory ready.", flush=True)
+
         return self._embedder
 
     def get_collection(self, user_id: str):

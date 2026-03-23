@@ -19,6 +19,13 @@ COMMAND_PATTERN = re.compile(
     re.IGNORECASE
 )
 
+# Matches the command wrapped in markdown bold/italic (e.g. **[NAME: x]** or *[NOTE: y]*)
+# Used only for stripping — capturing is done by COMMAND_PATTERN above
+_MARKDOWN_COMMAND_PATTERN = re.compile(
+    r'\*{1,2}\[(REMEMBER|NOTE|NAME):\s*.+?\]\*{1,2}',
+    re.IGNORECASE
+)
+
 
 def parse_and_apply(user_id: str, response_text: str) -> tuple[str, list[MemoryAction]]:
     """
@@ -47,7 +54,8 @@ def parse_and_apply(user_id: str, response_text: str) -> tuple[str, list[MemoryA
             core.set_user_name(user_id, cmd_value)
             actions.append(MemoryAction(type="name", value=cmd_value))
 
-    # Strip commands from the displayed response
-    cleaned = COMMAND_PATTERN.sub("", response_text).strip()
+    # Strip markdown-wrapped variants first (**[CMD: ...]**), then bare ones
+    cleaned = _MARKDOWN_COMMAND_PATTERN.sub("", response_text)
+    cleaned = COMMAND_PATTERN.sub("", cleaned).strip()
 
     return cleaned, actions
