@@ -14,73 +14,67 @@ Max size: ~300 tokens  (kept tiny — it's always in context)
 """
 
 import json
-import sqlite3
-from pathlib import Path
 
 from agent_memory.config import MemoryConfig
+from agent_memory.storage.sqlite_store import SQLiteStore
 
-DB_PATH = MemoryConfig().db_path
+_store = SQLiteStore(MemoryConfig().db_path)
 
 
-def _get_conn() -> sqlite3.Connection:
-    DB_PATH.parent.mkdir(parents=True, exist_ok=True)
-    conn = sqlite3.connect(str(DB_PATH))
+def _ensure_table(conn) -> None:
     conn.execute("""
         CREATE TABLE IF NOT EXISTS core_memory (
             user_id TEXT PRIMARY KEY,
             data    TEXT NOT NULL
         )
     """)
-    conn.commit()
-    return conn
 
 
 def _default(user_id: str) -> dict:
     return {
         "user_name": "User",
-        "user_facts": [],       # e.g. ["Works in ML", "Prefers Python", "Lives in Delhi"]
+        "user_facts": [],
         "assistant_persona": "You are a helpful, concise assistant with an excellent memory.",
-        "scratch": ""           # LLM can write short working notes here
+        "scratch": "",
     }
 
 
 def load(user_id: str) -> dict:
-    conn = _get_conn()
-    row = conn.execute("SELECT data FROM core_memory WHERE user_id=?", (user_id,)).fetchone()
-    conn.close()
-    if row:
-        return json.loads(row[0])
-    return _default(user_id)
+    with _store.connection() as conn:
+        _ensure_table(conn)
+        row = conn.execute(
+            "SELECT data FROM core_memory WHERE user_id = ?", (user_id,)
+        ).fetchone()
+    return json.loads(row[0]) if row else _default(user_id)
 
 
-def save(user_id: str, data: dict):
-    conn = _get_conn()
-    conn.execute(
-        "INSERT OR REPLACE INTO core_memory (user_id, data) VALUES (?, ?)",
-        (user_id, json.dumps(data))
-    )
-    conn.commit()
-    conn.close()
+def save(user_id: str, data: dict) -> None:
+    with _store.connection() as conn:
+        _ensure_table(conn)
+        conn.execute(
+            "INSERT OR REPLACE INTO core_memory (user_id, data) VALUES (?, ?)",
+            (user_id, json.dumps(data)),
+        )
 
 
-def update_fact(user_id: str, fact: str):
-    """Add or update a user fact (deduplicates similar facts)."""
+def update_fact(user_id: str, fact: str) -> None:
+    """Add a user fact (deduplicates; caps at core_memory_max_facts)."""
+    config = MemoryConfig()
     data = load(user_id)
-    # Simple dedup: avoid exact duplicates
     if fact not in data["user_facts"]:
         data["user_facts"].append(fact)
-        # Keep only last 10 facts to stay within token budget
-        data["user_facts"] = data["user_facts"][-10:]
+        data["user_facts"] = data["user_facts"][-config.core_memory_max_facts:]
     save(user_id, data)
 
 
-def update_scratch(user_id: str, note: str):
+def update_scratch(user_id: str, note: str) -> None:
+    config = MemoryConfig()
     data = load(user_id)
-    data["scratch"] = note[:500]  # hard cap scratch to 500 chars
+    data["scratch"] = note[:config.core_memory_max_scratch_chars]
     save(user_id, data)
 
 
-def set_user_name(user_id: str, name: str):
+def set_user_name(user_id: str, name: str) -> None:
     data = load(user_id)
     data["user_name"] = name
     save(user_id, data)
@@ -91,9 +85,10 @@ def render_for_prompt(user_id: str) -> str:
     data = load(user_id)
     facts_str = "\n".join(f"  - {f}" for f in data["user_facts"]) or "  (none yet)"
     scratch_str = data["scratch"] or "(empty)"
-    return f"""## CORE MEMORY (always present)
-Assistant Persona: {data['assistant_persona']}
-User Name: {data['user_name']}
-Known User Facts:
-{facts_str}
-Working Notes: {scratch_str}"""
+    return (
+        f"## CORE MEMORY (always present)\n"
+        f"Assistant Persona: {data['assistant_persona']}\n"
+        f"User Name: {data['user_name']}\n"
+        f"Known User Facts:\n{facts_str}\n"
+        f"Working Notes: {scratch_str}"
+    )

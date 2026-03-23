@@ -17,7 +17,6 @@ Memory layers active:
 
 import asyncio
 import argparse
-import sqlite3
 from pathlib import Path
 
 from rich.console import Console
@@ -26,6 +25,8 @@ from rich.text import Text
 from rich.rule import Rule
 
 from agent_memory.config import MemoryConfig
+from agent_memory.storage.sqlite_store import SQLiteStore
+from agent_memory.storage.chroma_store import ChromaStore
 from ollama_client import check_ollama
 from chat_engine import process_message
 from agent_memory.layers import core, summary, conversation
@@ -76,28 +77,11 @@ def print_memory_state(user_id: str):
     console.print(Rule())
 
 
-def reset_user(user_id: str):
+def reset_user(user_id: str, config: MemoryConfig = None):
     """Wipe all memory for a user."""
-    db_path = Path("data/conversations.db")
-    chroma_path = Path("data/chroma")
-    
-    if db_path.exists():
-        conn = sqlite3.connect(str(db_path))
-        safe = "".join(c if c.isalnum() else "_" for c in user_id)
-        conn.execute(f"DROP TABLE IF EXISTS conv_{safe}")
-        conn.execute("DELETE FROM core_memory WHERE user_id=?", (user_id,))
-        conn.execute("DELETE FROM summaries WHERE user_id=?", (user_id,))
-        conn.commit()
-        conn.close()
-    
-    # ChromaDB reset
-    try:
-        import chromadb
-        client = chromadb.PersistentClient(path=str(chroma_path))
-        safe = "".join(c if c.isalnum() else "_" for c in user_id)
-        client.delete_collection(f"memory_{safe}")
-    except Exception:
-        pass
+    config = config or MemoryConfig()
+    SQLiteStore(config.db_path).delete_user(user_id)
+    ChromaStore(config.chroma_path).delete_collection(user_id)
     
     console.print(f"[yellow]⚠ Memory wiped for user '{user_id}'[/yellow]")
 
@@ -140,7 +124,7 @@ async def chat_loop(user_id: str, debug: bool = False):
             continue
 
         if user_input.lower() == "/reset":
-            reset_user(user_id)
+            reset_user(user_id, config)
             continue
 
         if user_input.lower() == "/help":
@@ -182,7 +166,7 @@ def main():
     args = parser.parse_args()
 
     if args.reset:
-        reset_user(args.user)
+        reset_user(args.user, MemoryConfig.from_env())
         return
 
     asyncio.run(chat_loop(args.user, debug=args.debug))

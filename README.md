@@ -149,8 +149,8 @@ The project is being refactored in 7 phases. Each phase ends with a working, com
 |---|---|---|
 | 1 | Restructure into `src/agent_memory/` package layout | ✅ Done |
 | 2 | `MemoryConfig` dataclass — eliminate all scattered constants | ✅ Done |
-| 3 | `SQLiteStore` + `ChromaStore` — fix connection/ordering/error bugs | ⬜ Next |
-| 4 | `BaseLLMProvider` abstraction — Ollama, OpenAI, Anthropic backends | ⬜ |
+| 3 | `SQLiteStore` + `ChromaStore` — fix connection/ordering/error bugs | ✅ Done |
+| 4 | `BaseLLMProvider` abstraction — Ollama, OpenAI, Anthropic backends | ⬜ Next |
 | 5 | `MemoryEngine` class — clean public API, fix budget overflow | ⬜ |
 | 6 | CLI separation — `cli/main.py` as thin wrapper | ⬜ |
 | 7 | Packaging, tests, `pip install agent-memory` | ⬜ |

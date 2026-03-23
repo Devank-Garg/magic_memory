@@ -43,7 +43,7 @@ Each entry maps to a phase and a specific task.
 ---
 
 ## Phase 3 — `SQLiteStore` + `ChromaStore` storage layer
-*Planned. Fixes 5 known bugs from the original code review.*
+*Completed. Fixed 5 bugs from the original code review. 32 unit tests passing.*
 
 **Bugs fixed in this phase:**
 

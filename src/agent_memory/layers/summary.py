@@ -13,18 +13,13 @@ The summary is stored in SQLite and injected into context as:
 This compresses 2000 tokens of old conversation into ~200 tokens.
 """
 
-import json
-import sqlite3
-from pathlib import Path
-
 from agent_memory.config import MemoryConfig
+from agent_memory.storage.sqlite_store import SQLiteStore
 
-DB_PATH = MemoryConfig().db_path
+_store = SQLiteStore(MemoryConfig().db_path)
 
 
-def _get_conn() -> sqlite3.Connection:
-    DB_PATH.parent.mkdir(parents=True, exist_ok=True)
-    conn = sqlite3.connect(str(DB_PATH))
+def _ensure_table(conn) -> None:
     conn.execute("""
         CREATE TABLE IF NOT EXISTS summaries (
             user_id    TEXT PRIMARY KEY,
@@ -32,29 +27,24 @@ def _get_conn() -> sqlite3.Connection:
             turn_count INTEGER NOT NULL DEFAULT 0
         )
     """)
-    conn.commit()
-    return conn
 
 
 def load(user_id: str) -> dict:
-    conn = _get_conn()
-    row = conn.execute(
-        "SELECT summary, turn_count FROM summaries WHERE user_id=?", (user_id,)
-    ).fetchone()
-    conn.close()
-    if row:
-        return {"summary": row[0], "turn_count": row[1]}
-    return {"summary": "", "turn_count": 0}
+    with _store.connection() as conn:
+        _ensure_table(conn)
+        row = conn.execute(
+            "SELECT summary, turn_count FROM summaries WHERE user_id = ?", (user_id,)
+        ).fetchone()
+    return {"summary": row[0], "turn_count": row[1]} if row else {"summary": "", "turn_count": 0}
 
 
-def save(user_id: str, summary: str, turn_count: int):
-    conn = _get_conn()
-    conn.execute(
-        "INSERT OR REPLACE INTO summaries (user_id, summary, turn_count) VALUES (?, ?, ?)",
-        (user_id, summary, turn_count)
-    )
-    conn.commit()
-    conn.close()
+def save(user_id: str, summary: str, turn_count: int) -> None:
+    with _store.connection() as conn:
+        _ensure_table(conn)
+        conn.execute(
+            "INSERT OR REPLACE INTO summaries (user_id, summary, turn_count) VALUES (?, ?, ?)",
+            (user_id, summary, turn_count),
+        )
 
 
 def render_for_prompt(user_id: str) -> str:
@@ -62,8 +52,7 @@ def render_for_prompt(user_id: str) -> str:
     data = load(user_id)
     if not data["summary"]:
         return ""
-    return f"""## CONVERSATION SUMMARY (older context, {data['turn_count']} turns ago)
-{data['summary']}"""
+    return f"## CONVERSATION SUMMARY (older context, {data['turn_count']} turns ago)\n{data['summary']}"
 
 
 SUMMARIZE_PROMPT = """You are a memory manager. Compress the following conversation turns into a dense, factual summary of at most 150 words.
