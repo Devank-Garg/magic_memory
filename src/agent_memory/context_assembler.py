@@ -50,12 +50,15 @@ def build_context(user_id: str, current_user_message: str, config: MemoryConfig 
 - Keep responses short unless the user asks for detail.
 
 ## MEMORY COMMANDS
-You may append ONE command at the very end of your response (never mid-response):
+After writing your full response, you may append ONE command on a new line:
   [REMEMBER: <fact>]   — only for facts the user explicitly told you this turn
   [NOTE: <text>]       — update your working notes
   [NAME: <name>]       — only when the user directly tells you their name
 
-NEVER invent facts. NEVER use these as answers. NEVER wrap them in markdown formatting.
+Rules:
+- ALWAYS write a natural reply first. A memory command must NEVER be your entire response.
+- If you store something, briefly acknowledge it in your reply (e.g. "Got it, I'll remember that!").
+- NEVER invent facts. NEVER wrap commands in markdown formatting.
 """
     ]
 
