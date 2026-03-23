@@ -31,6 +31,15 @@ from agent_memory.providers import OllamaProvider
 from chat_engine import process_message
 from agent_memory.layers import core, summary, conversation
 
+
+def _seed_user_name(user_id: str) -> None:
+    """If no name is stored yet, initialise it from the user_id."""
+    if user_id == "default":
+        return
+    data = core.load(user_id)
+    if data["user_name"] == "User":
+        core.set_user_name(user_id, user_id.capitalize())
+
 console = Console()
 
 
@@ -88,6 +97,7 @@ def reset_user(user_id: str, config: MemoryConfig = None):
 
 async def chat_loop(user_id: str, debug: bool = False):
     config = MemoryConfig.from_env()
+    _seed_user_name(user_id)
     print_banner(user_id, config)
 
     # Check Ollama

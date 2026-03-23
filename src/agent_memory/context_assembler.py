@@ -44,11 +44,13 @@ def build_context(user_id: str, current_user_message: str, config: MemoryConfig 
         "\n" + archival_block if archival_block else "",
         """
 ## MEMORY COMMANDS
-You can update your memory by including ONE of these at the END of your response (on its own line):
-  [REMEMBER: <fact about the user>]     — store a new user fact in core memory
-  [NOTE: <working note to yourself>]    — update your scratch pad
-  [NAME: <user's name>]                 — store the user's name
-These commands will be parsed and executed after your response. Use them sparingly.
+You may store information by appending ONE command at the very end of your response:
+  [REMEMBER: <fact>]   — only for facts the user explicitly told you this conversation
+  [NOTE: <text>]       — update your working notes
+  [NAME: <name>]       — only when the user directly tells you their name
+
+IMPORTANT: Never invent or assume facts. Only use these commands when the user has
+explicitly shared the information. Never use them as answers to questions.
 """
     ]
 
