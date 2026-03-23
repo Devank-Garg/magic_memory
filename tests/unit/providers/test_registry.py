@@ -24,11 +24,13 @@ def test_create_ollama_case_insensitive(config):
 
 
 def test_create_openai_provider(config):
+    pytest.importorskip("openai", reason="openai package not installed")
     provider = create_provider("openai", config, api_key="sk-test")
     assert isinstance(provider, OpenAIProvider)
 
 
 def test_create_anthropic_provider(config):
+    pytest.importorskip("anthropic", reason="anthropic package not installed")
     provider = create_provider("anthropic", config, api_key="ant-test")
     assert isinstance(provider, AnthropicProvider)
 
