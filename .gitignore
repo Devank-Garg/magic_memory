@@ -1,0 +1,23 @@
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+env/
+venv/
+.venv/
+*.egg-info/
+dist/
+build/
+.eggs/
+
+# Data files
+data/
+
+# IDE
+.vscode/
+.idea/
+
+# Misc
+*.log
+.DS_Store
