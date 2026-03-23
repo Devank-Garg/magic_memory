@@ -1,5 +1,5 @@
 """
-archival_memory.py  —  Layer 4: Archival Memory (Vector Store)
+archival.py  —  Layer 4: Archival Memory (Vector Store)
 
 Long-term semantic memory. Every conversation turn is embedded and stored
 in ChromaDB. At query time, semantically similar past messages are retrieved
@@ -15,7 +15,7 @@ import hashlib
 import time
 from pathlib import Path
 
-DB_PATH = Path(__file__).parent.parent / "data" / "chroma"
+DB_PATH = Path(__file__).parents[3] / "data" / "chroma"
 
 
 def _get_client():
@@ -51,20 +51,20 @@ def archive_message(user_id: str, role: str, content: str, message_id: int):
     """Embed and store a message in the vector store."""
     if len(content.strip()) < 10:
         return  # skip very short messages
-    
+
     embedder = get_embedder()
     collection = _get_collection(user_id)
-    
+
     # Use message_id as unique doc id
     doc_id = f"{user_id}_{message_id}"
-    
+
     # Check if already archived
     existing = collection.get(ids=[doc_id])
     if existing["ids"]:
         return
-    
+
     embedding = embedder.encode(content).tolist()
-    
+
     collection.add(
         ids=[doc_id],
         embeddings=[embedding],
@@ -81,20 +81,20 @@ def search(user_id: str, query: str, n_results: int = 3) -> list[dict]:
     """Semantic search over archived messages. Returns most relevant past context."""
     embedder = get_embedder()
     collection = _get_collection(user_id)
-    
+
     count = collection.count()
     if count == 0:
         return []
-    
+
     n_results = min(n_results, count)
-    
+
     query_embedding = embedder.encode(query).tolist()
     results = collection.query(
         query_embeddings=[query_embedding],
         n_results=n_results,
         include=["documents", "metadatas", "distances"]
     )
-    
+
     retrieved = []
     for doc, meta, dist in zip(
         results["documents"][0],
@@ -108,7 +108,7 @@ def search(user_id: str, query: str, n_results: int = 3) -> list[dict]:
                 "content": doc,
                 "relevance": round(1 - dist, 3)
             })
-    
+
     return retrieved
 
 
@@ -117,9 +117,9 @@ def render_for_prompt(user_id: str, query: str) -> str:
     results = search(user_id, query, n_results=3)
     if not results:
         return ""
-    
+
     lines = ["## RETRIEVED MEMORIES (semantically relevant past context)"]
     for r in results:
         lines.append(f"  [{r['role'].upper()} | relevance: {r['relevance']}]: {r['content'][:300]}")
-    
+
     return "\n".join(lines)

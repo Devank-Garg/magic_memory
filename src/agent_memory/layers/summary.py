@@ -1,12 +1,12 @@
 """
-summary_memory.py  —  Layer 2: Rolling Summary
+summary.py  —  Layer 2: Rolling Summary
 
 When conversation history grows beyond a threshold, the oldest turns are
 summarized by the LLM and the raw messages are archived.
 
 Flow:
   full history → [old turns → summary] + [recent turns verbatim]
-  
+
 The summary is stored in SQLite and injected into context as:
   "## CONVERSATION SUMMARY (older context)\n<summary text>"
 
@@ -17,7 +17,7 @@ import json
 import sqlite3
 from pathlib import Path
 
-DB_PATH = Path(__file__).parent.parent / "data" / "conversations.db"
+DB_PATH = Path(__file__).parents[3] / "data" / "conversations.db"
 
 
 def _get_conn() -> sqlite3.Connection:
@@ -64,7 +64,7 @@ def render_for_prompt(user_id: str) -> str:
 {data['summary']}"""
 
 
-SUMMARIZE_PROMPT = """You are a memory manager. Compress the following conversation turns into a dense, factual summary of at most 150 words. 
+SUMMARIZE_PROMPT = """You are a memory manager. Compress the following conversation turns into a dense, factual summary of at most 150 words.
 Preserve: key facts learned, decisions made, topics discussed, user preferences revealed.
 Discard: pleasantries, filler, redundant information.
 Return ONLY the summary paragraph, nothing else.

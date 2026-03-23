@@ -1,5 +1,5 @@
 """
-conversation_store.py  —  Layer 0: Raw Conversation Log
+conversation.py  —  Layer 0: Raw Conversation Log
 
 Stores every single message ever sent/received to SQLite.
 This is the "disk" in our memory hierarchy — full fidelity, never trimmed.
@@ -12,7 +12,7 @@ import time
 from pathlib import Path
 
 
-DB_PATH = Path(__file__).parent.parent / "data" / "conversations.db"
+DB_PATH = Path(__file__).parents[3] / "data" / "conversations.db"
 
 
 def _get_conn(user_id: str) -> sqlite3.Connection:

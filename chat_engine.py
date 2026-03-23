@@ -11,14 +11,10 @@ Ties all layers together:
 """
 
 import asyncio
-from memory import (
-    conversation_store,
-    archival_memory,
-    summary_memory,
-    context_assembler,
-)
+from agent_memory.layers import conversation, archival, summary
+from agent_memory import context_assembler
 from ollama_client import chat, summarize
-from command_parser import parse_and_apply
+from agent_memory.command_parser import parse_and_apply
 
 
 async def process_message(
@@ -56,12 +52,12 @@ async def process_message(
     cleaned_response, memory_actions = parse_and_apply(user_id, raw_response)
 
     # ── Step 5: Persist to raw conversation store ──────────────────────────────
-    msg_id_user  = conversation_store.save_message(user_id, "user",      user_message)
-    msg_id_asst  = conversation_store.save_message(user_id, "assistant", cleaned_response)
+    msg_id_user  = conversation.save_message(user_id, "user",      user_message)
+    msg_id_asst  = conversation.save_message(user_id, "assistant", cleaned_response)
 
     # ── Step 6: Archive both to vector store (async, non-blocking) ─────────────
-    archival_memory.archive_message(user_id, "user",      user_message,     msg_id_user)
-    archival_memory.archive_message(user_id, "assistant", cleaned_response, msg_id_asst)
+    archival.archive_message(user_id, "user",      user_message,     msg_id_user)
+    archival.archive_message(user_id, "assistant", cleaned_response, msg_id_asst)
 
     # ── Step 7: Trigger summarization if needed ────────────────────────────────
     if context_assembler.should_summarize(user_id):
@@ -75,7 +71,7 @@ async def _run_summarization(user_id: str):
     turns_to_summarize = context_assembler.get_turns_to_summarize(user_id)
     if not turns_to_summarize:
         return
-    
+
     summary_text = await summarize(turns_to_summarize)
-    total_turns  = conversation_store.get_message_count(user_id)
-    summary_memory.save(user_id, summary_text, total_turns)
+    total_turns  = conversation.get_message_count(user_id)
+    summary.save(user_id, summary_text, total_turns)

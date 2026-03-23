@@ -27,7 +27,7 @@ from rich.rule import Rule
 
 from ollama_client import check_ollama
 from chat_engine import process_message
-from memory import core_memory, summary_memory, conversation_store
+from agent_memory.layers import core, summary, conversation
 
 console = Console()
 
@@ -50,23 +50,23 @@ def print_memory_state(user_id: str):
     console.print(Rule("[bold yellow]Memory State[/bold yellow]"))
     
     # Core memory
-    data = core_memory.load(user_id)
+    data = core.load(user_id)
     console.print(f"\n[bold cyan]Layer 1 — Core Memory[/bold cyan]")
     console.print(f"  Name:   {data['user_name']}")
     console.print(f"  Facts:  {data['user_facts'] or '(none)'}")
     console.print(f"  Scratch: {data['scratch'] or '(empty)'}")
-    
+
     # Summary
-    s = summary_memory.load(user_id)
+    s = summary.load(user_id)
     console.print(f"\n[bold magenta]Layer 2 — Rolling Summary[/bold magenta]")
     if s['summary']:
         console.print(f"  [dim](covers turns 1–{s['turn_count']})[/dim]")
         console.print(f"  {s['summary'][:200]}{'...' if len(s['summary']) > 200 else ''}")
     else:
         console.print("  [dim](no summary yet — triggers after 15 turns)[/dim]")
-    
+
     # Message count
-    total = conversation_store.get_message_count(user_id)
+    total = conversation.get_message_count(user_id)
     console.print(f"\n[bold green]Layer 3 — Sliding Window[/bold green]")
     console.print(f"  Total messages in log: {total}")
     

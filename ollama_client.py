@@ -59,7 +59,7 @@ async def chat(messages: list[dict], stream: bool = False) -> str:
 
 async def summarize(messages_to_summarize: list[dict]) -> str:
     """Call LLM specifically for summarization (non-streaming, lower temp)."""
-    from memory.summary_memory import build_summarize_request
+    from agent_memory.layers.summary import build_summarize_request
     prompt = build_summarize_request(messages_to_summarize)
     
     payload = {

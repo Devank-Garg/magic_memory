@@ -1,5 +1,5 @@
 """
-core_memory.py  —  Layer 1: Core Memory (MemGPT-style)
+core.py  —  Layer 1: Core Memory (MemGPT-style)
 
 A small, always-present block of key facts about the user.
 Always injected into the system prompt — never evicted.
@@ -17,7 +17,7 @@ import json
 import sqlite3
 from pathlib import Path
 
-DB_PATH = Path(__file__).parent.parent / "data" / "conversations.db"
+DB_PATH = Path(__file__).parents[3] / "data" / "conversations.db"
 
 
 def _get_conn() -> sqlite3.Connection:

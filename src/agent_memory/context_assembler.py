@@ -14,8 +14,8 @@ Priority order (highest to lowest):
 Total budget: configurable, default 3000 tokens (leaving ~1000 for response)
 """
 
-from memory.token_counter import count_tokens, count_messages_tokens
-from memory import core_memory, summary_memory, archival_memory, conversation_store
+from agent_memory.token_counter import count_tokens, count_messages_tokens
+from agent_memory.layers import core, summary, archival, conversation
 
 
 # ── Configuration ──────────────────────────────────────────────────────────────
@@ -28,16 +28,16 @@ SUMMARIZE_AFTER_TURNS = 15     # trigger summarization after N total turns
 def build_context(user_id: str, current_user_message: str) -> list[dict]:
     """
     Build the final messages list for the LLM call.
-    
+
     Returns: list of {role, content} ready to send to Ollama
     """
     budget = TOTAL_CONTEXT_BUDGET
     messages = []
 
     # ── 1. SYSTEM PROMPT (Core Memory) — always present ───────────────────────
-    core_block    = core_memory.render_for_prompt(user_id)
-    summary_block = summary_memory.render_for_prompt(user_id)
-    archival_block = archival_memory.render_for_prompt(user_id, current_user_message)
+    core_block    = core.render_for_prompt(user_id)
+    summary_block = summary.render_for_prompt(user_id)
+    archival_block = archival.render_for_prompt(user_id, current_user_message)
 
     system_parts = [
         core_block,
@@ -61,12 +61,12 @@ These commands will be parsed and executed after your response. Use them sparing
 
     # ── 2. RECENT MESSAGES (Sliding Window) ────────────────────────────────────
     # Get recent turns, then trim to fit budget
-    recent = conversation_store.get_recent_messages(user_id, RECENT_TURNS_DEFAULT * 2)
-    
+    recent = conversation.get_recent_messages(user_id, RECENT_TURNS_DEFAULT * 2)
+
     # Build recent window that fits in budget (leave room for current message)
     current_msg_tokens = count_tokens(current_user_message) + 10
     available_for_history = budget - current_msg_tokens - 100  # 100 token safety margin
-    
+
     history_window = []
     token_used = 0
     for msg in reversed(recent):  # newest first
@@ -87,15 +87,15 @@ These commands will be parsed and executed after your response. Use them sparing
 
 def should_summarize(user_id: str) -> bool:
     """Returns True if we should trigger a summarization pass."""
-    total_turns = conversation_store.get_message_count(user_id)
-    existing_summary = summary_memory.load(user_id)
+    total_turns = conversation.get_message_count(user_id)
+    existing_summary = summary.load(user_id)
     turns_since_summary = total_turns - existing_summary["turn_count"]
     return turns_since_summary >= SUMMARIZE_AFTER_TURNS
 
 
 def get_turns_to_summarize(user_id: str) -> list[dict]:
     """Get the old turns that should be summarized (everything except recent window)."""
-    all_msgs = conversation_store.get_all_messages(user_id)
+    all_msgs = conversation.get_all_messages(user_id)
     # Keep last RECENT_TURNS_DEFAULT*2 verbatim, summarize everything older
     cutoff = max(0, len(all_msgs) - RECENT_TURNS_DEFAULT * 2)
     return all_msgs[:cutoff]
