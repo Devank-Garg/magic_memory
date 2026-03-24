@@ -67,7 +67,8 @@ class MemoryConfig:
         if v := _int("AGENT_MEMORY_RESPONSE_RESERVE"): kwargs["response_reserve"] = v
         if v := _int("AGENT_MEMORY_RECENT_TURNS"):    kwargs["recent_turns_window"] = v
         if v := _int("AGENT_MEMORY_SUMMARIZE_AFTER"): kwargs["summarize_after_turns"] = v
-        if v := _int("AGENT_MEMORY_MAX_FACTS"):       kwargs["core_memory_max_facts"] = v
+        if v := _int("AGENT_MEMORY_MAX_FACTS"):        kwargs["core_memory_max_facts"] = v
+        if v := _int("AGENT_MEMORY_MAX_SCRATCH"):      kwargs["core_memory_max_scratch_chars"] = v
         if v := _flt("AGENT_MEMORY_ARCHIVAL_THRESHOLD"): kwargs["archival_similarity_threshold"] = v
         if v := _int("AGENT_MEMORY_ARCHIVAL_TOP_K"):  kwargs["archival_top_k"] = v
         if v := _str("AGENT_MEMORY_EMBEDDER_MODEL"):  kwargs["embedder_model"] = v
