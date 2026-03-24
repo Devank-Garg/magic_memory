@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "agent-memory"
-version = "0.1.0"
+version = "0.2.0"
 description = "Modular MemGPT-style memory layer for AI agents"
 requires-python = ">=3.11"
 dependencies = [
@@ -16,6 +16,8 @@ dependencies = [
 
 [project.optional-dependencies]
 cli = ["rich>=13.0.0"]
+openai = ["openai>=1.0.0"]
+anthropic = ["anthropic>=0.20.0"]
 dev = ["pytest>=8", "pytest-asyncio>=0.23", "pytest-cov>=5"]
 
 [project.scripts]
@@ -24,5 +26,13 @@ agent-memory = "cli.main:main"
 [tool.setuptools.packages.find]
 where = ["src"]
 
+[tool.setuptools.package-data]
+agent_memory = ["py.typed"]
+
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
+addopts = "--cov=agent_memory --cov-report=term-missing --cov-fail-under=80"
+
+[tool.coverage.run]
+source = ["src/agent_memory"]
+omit = ["*/tests/*"]
