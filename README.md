@@ -203,7 +203,7 @@ engine = MemoryEngine(config=config, provider=OllamaProvider(config=config))
 | Field | Default | Env var | Description |
 |---|---|---|---|
 | `core_memory_max_facts` | `10` | `AGENT_MEMORY_MAX_FACTS` | Max number of facts stored in core memory (Layer 1) |
-| `core_memory_max_scratch_chars` | `500` | — | Max characters in the scratch/notes field |
+| `core_memory_max_scratch_chars` | `500` | `AGENT_MEMORY_MAX_SCRATCH` | Max characters in the scratch/notes field |
 
 **Archival memory**
 
