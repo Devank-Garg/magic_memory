@@ -166,29 +166,73 @@ engine.reset_user("alice")  # wipe everything for this user
 
 ## Configuration
 
+Pass a `MemoryConfig` when constructing `MemoryEngine`, or let the CLI pick it up via `MemoryConfig.from_env()`.
+
 ```python
-from agent_memory import MemoryConfig
+from agent_memory import MemoryConfig, MemoryEngine
+from agent_memory.providers import OllamaProvider
 
 config = MemoryConfig(
-    db_path="~/.myapp/memory.db",
-    chroma_path="~/.myapp/chroma",
     token_budget=4000,
     recent_turns_window=10,
-    summarize_after_turns=15,
-    core_memory_max_facts=10,
+    summarize_after_turns=20,
 )
+engine = MemoryEngine(config=config, provider=OllamaProvider(config=config))
 ```
 
-Or via environment variables:
+### All options
+
+**Storage**
+
+| Field | Default | Env var | Description |
+|---|---|---|---|
+| `db_path` | `./data/conversations.db` | `AGENT_MEMORY_DB_PATH` | SQLite file path |
+| `chroma_path` | `./data/chroma` | `AGENT_MEMORY_CHROMA_PATH` | ChromaDB directory |
+
+**Token budget**
+
+| Field | Default | Env var | Description |
+|---|---|---|---|
+| `token_budget` | `3000` | `AGENT_MEMORY_TOKEN_BUDGET` | Total input tokens sent to the model per turn |
+| `response_reserve` | `1000` | `AGENT_MEMORY_RESPONSE_RESERVE` | Tokens reserved for the model's reply |
+| `recent_turns_window` | `10` | `AGENT_MEMORY_RECENT_TURNS` | How many recent turns to include verbatim (Layer 3) |
+| `summarize_after_turns` | `15` | `AGENT_MEMORY_SUMMARIZE_AFTER` | Compress older turns into a summary after N total turns |
+
+**Core memory**
+
+| Field | Default | Env var | Description |
+|---|---|---|---|
+| `core_memory_max_facts` | `10` | `AGENT_MEMORY_MAX_FACTS` | Max number of facts stored in core memory (Layer 1) |
+| `core_memory_max_scratch_chars` | `500` | — | Max characters in the scratch/notes field |
+
+**Archival memory**
+
+| Field | Default | Env var | Description |
+|---|---|---|---|
+| `archival_similarity_threshold` | `0.7` | `AGENT_MEMORY_ARCHIVAL_THRESHOLD` | Minimum cosine similarity for a result to be included |
+| `archival_top_k` | `3` | `AGENT_MEMORY_ARCHIVAL_TOP_K` | Max archival results injected per turn |
+| `embedder_model` | `all-MiniLM-L6-v2` | `AGENT_MEMORY_EMBEDDER_MODEL` | Sentence-transformer model used for embeddings |
+
+**LLM backend**
+
+| Field | Default | Env var | Description |
+|---|---|---|---|
+| `model` | `ministral-3:3b` | `AGENT_MEMORY_MODEL` | Model name passed to the provider |
+| `ollama_base` | `http://localhost:11434` | `AGENT_MEMORY_OLLAMA_BASE` | Ollama server URL |
+| `timeout` | `120.0` | `AGENT_MEMORY_TIMEOUT` | Request timeout in seconds |
+
+### Via environment variables
+
+Any field can be set with an env var — useful for deployments or keeping secrets out of code:
 
 ```bash
-export AGENT_MEMORY_DB_PATH=~/.myapp/memory.db
 export AGENT_MEMORY_TOKEN_BUDGET=4000
 export AGENT_MEMORY_MODEL=llama3.2
+export AGENT_MEMORY_DB_PATH=~/.myapp/memory.db
 ```
 
 ```python
-config = MemoryConfig.from_env()
+config = MemoryConfig.from_env()  # unset vars fall back to defaults
 ```
 
 ---
