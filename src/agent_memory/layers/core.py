@@ -21,13 +21,19 @@ from agent_memory.storage.sqlite_store import SQLiteStore
 _store = SQLiteStore(MemoryConfig().db_path)
 
 
+_CORE_TABLE_KEY = "core_memory"
+
+
 def _ensure_table(conn) -> None:
+    if _CORE_TABLE_KEY in _store._tables_ensured:
+        return
     conn.execute("""
         CREATE TABLE IF NOT EXISTS core_memory (
             user_id TEXT PRIMARY KEY,
             data    TEXT NOT NULL
         )
     """)
+    _store._tables_ensured.add(_CORE_TABLE_KEY)
 
 
 def _default(user_id: str) -> dict:
@@ -57,9 +63,9 @@ def save(user_id: str, data: dict) -> None:
         )
 
 
-def update_fact(user_id: str, fact: str) -> None:
+def update_fact(user_id: str, fact: str, config: MemoryConfig | None = None) -> None:
     """Add a user fact (deduplicates; caps at core_memory_max_facts)."""
-    config = MemoryConfig()
+    config = config or MemoryConfig()
     data = load(user_id)
     if fact not in data["user_facts"]:
         data["user_facts"].append(fact)
@@ -67,8 +73,8 @@ def update_fact(user_id: str, fact: str) -> None:
     save(user_id, data)
 
 
-def update_scratch(user_id: str, note: str) -> None:
-    config = MemoryConfig()
+def update_scratch(user_id: str, note: str, config: MemoryConfig | None = None) -> None:
+    config = config or MemoryConfig()
     data = load(user_id)
     data["scratch"] = note[:config.core_memory_max_scratch_chars]
     save(user_id, data)

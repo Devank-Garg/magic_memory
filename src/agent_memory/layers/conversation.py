@@ -16,14 +16,18 @@ _store = SQLiteStore(MemoryConfig().db_path)
 
 def _ensure_table(conn, user_id: str) -> None:
     safe = SQLiteStore._safe(user_id)
+    key  = f"conv_{safe}"
+    if key in _store._tables_ensured:
+        return
     conn.execute(f"""
-        CREATE TABLE IF NOT EXISTS conv_{safe} (
+        CREATE TABLE IF NOT EXISTS {key} (
             id        INTEGER PRIMARY KEY AUTOINCREMENT,
             role      TEXT NOT NULL,
             content   TEXT NOT NULL,
             timestamp REAL NOT NULL
         )
     """)
+    _store._tables_ensured.add(key)
 
 
 def save_message(user_id: str, role: str, content: str) -> int:

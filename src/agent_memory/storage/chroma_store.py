@@ -29,6 +29,13 @@ class ChromaStore:
 
     @staticmethod
     def _safe(user_id: str) -> str:
+        """Sanitize user_id for use as a ChromaDB collection name suffix.
+
+        Raises ValueError for empty/blank user_ids, matching the behaviour of
+        SQLiteStore._safe to catch the error at the call site.
+        """
+        if not user_id or not user_id.strip():
+            raise ValueError(f"user_id must not be empty, got {user_id!r}")
         return "".join(c if c.isalnum() else "_" for c in user_id)
 
     def _get_client(self):
