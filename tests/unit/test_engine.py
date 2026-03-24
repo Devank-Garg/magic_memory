@@ -134,6 +134,68 @@ async def test_reset_user_clears_messages(engine, patched_layers):
     assert conversation.get_message_count("alice") == 0
 
 
+# ── parse_and_apply error boundary ──────────────────────────────────────────
+
+@pytest.mark.asyncio
+async def test_process_message_handles_parser_error(engine, patched_layers, mock_provider):
+    """If parse_and_apply raises, engine must return the raw response with
+    empty memory_actions rather than propagating the exception."""
+    from unittest.mock import patch as _patch
+    mock_provider.chat = AsyncMock(return_value="Test response")
+
+    with _patch("agent_memory.engine.parse_and_apply", side_effect=RuntimeError("parser crashed")):
+        result = await engine.process_message("alice", "hello")
+
+    assert result.response == "Test response"
+    assert result.memory_actions == []
+
+
+# ── config propagation ───────────────────────────────────────────────────────
+
+@pytest.mark.asyncio
+async def test_engine_uses_configured_db_path(tmp_path, mock_provider):
+    """MemoryEngine must store data in the configured db_path, not the default.
+    This was broken because layer modules bound _store at import time using the
+    default MemoryConfig, ignoring any custom path passed to MemoryEngine."""
+    custom_db = tmp_path / "custom_engine.db"
+    config = MemoryConfig(
+        db_path=custom_db,
+        chroma_path=tmp_path / "chroma",
+        summarize_after_turns=100,
+    )
+    engine = MemoryEngine(config=config, provider=mock_provider)
+    await engine.process_message("alice", "hello")
+
+    assert custom_db.exists(), "data was not written to the configured db_path"
+
+    from agent_memory.layers import conversation
+    count = conversation.get_message_count("alice")
+    assert count == 2
+
+
+@pytest.mark.asyncio
+async def test_engine_config_respected_by_update_fact(tmp_path, mock_provider):
+    """core_memory_max_facts override must be honoured, not silently ignored."""
+    config = MemoryConfig(
+        db_path=tmp_path / "facts.db",
+        chroma_path=tmp_path / "chroma",
+        core_memory_max_facts=3,
+        summarize_after_turns=100,
+    )
+    engine = MemoryEngine(config=config, provider=mock_provider)
+
+    from unittest.mock import AsyncMock
+    mock_provider.chat = AsyncMock(return_value=(
+        "ok [REMEMBER: a] [REMEMBER: b] [REMEMBER: c] [REMEMBER: d]"
+    ))
+    await engine.process_message("alice", "hi")
+
+    state = engine.get_memory_state("alice")
+    assert len(state.facts) <= 3, (
+        "core_memory_max_facts=3 was ignored; facts exceeded the configured cap"
+    )
+
+
 # ── MemoryAction str ─────────────────────────────────────────────────────────
 
 def test_memory_action_str():

@@ -21,6 +21,8 @@ Usage example::
 
 from __future__ import annotations
 
+import logging
+
 from agent_memory.config import MemoryConfig
 from agent_memory.providers.base import BaseLLMProvider, LLMOptions
 from agent_memory.providers.ollama import OllamaProvider
@@ -30,6 +32,8 @@ from agent_memory.layers import conversation, archival, summary, core
 from agent_memory.command_parser import parse_and_apply
 from agent_memory.storage.sqlite_store import SQLiteStore
 from agent_memory.storage.chroma_store import ChromaStore
+
+logger = logging.getLogger(__name__)
 
 
 class MemoryEngine:
@@ -49,6 +53,23 @@ class MemoryEngine:
     ) -> None:
         self._config = config or MemoryConfig()
         self._provider = provider or OllamaProvider(config=self._config)
+
+        # Build storage instances from this config and rebind module-level
+        # singletons in each layer so all reads/writes use the configured paths.
+        # Without this, layers default to MemoryConfig() at import time and
+        # ignore any custom db_path / chroma_path passed by the caller.
+        self._sqlite = SQLiteStore(self._config.db_path)
+        self._chroma = ChromaStore(
+            chroma_path=self._config.chroma_path,
+            similarity_threshold=self._config.archival_similarity_threshold,
+            embedder_model=self._config.embedder_model,
+            archival_top_k=self._config.archival_top_k,
+        )
+        conversation._store = self._sqlite
+        core._store        = self._sqlite
+        summary._store     = self._sqlite
+        archival._chroma   = self._chroma
+        archival._cfg      = self._config
 
     # ── public API ──────────────────────────────────────────────────────────
 
@@ -82,8 +103,16 @@ class MemoryEngine:
             messages, LLMOptions(stream=stream)
         )
 
-        # 3. Parse memory commands
-        cleaned_response, memory_actions = parse_and_apply(user_id, raw_response)
+        # 3. Parse memory commands — non-fatal: LLM output is unpredictable
+        try:
+            cleaned_response, memory_actions = parse_and_apply(user_id, raw_response, self._config)
+        except Exception as exc:
+            logger.warning(
+                "parse_and_apply failed for user=%s; returning raw response. Error: %s",
+                user_id, exc,
+            )
+            cleaned_response = raw_response
+            memory_actions   = []
 
         # 4. Persist
         msg_id_user = conversation.save_message(user_id, "user",      user_message)
@@ -119,8 +148,14 @@ class MemoryEngine:
 
     def reset_user(self, user_id: str) -> None:
         """Wipe all memory (SQLite + ChromaDB) for a user."""
-        SQLiteStore(self._config.db_path).delete_user(user_id)
-        ChromaStore(self._config.chroma_path).delete_collection(user_id)
+        from agent_memory.storage.sqlite_store import SQLiteStore as _S
+        safe = _S._safe(user_id)
+        # Clear the table-ensured cache on whichever store conversation is
+        # currently using (may differ from self._sqlite if rebound externally,
+        # e.g. in tests).  Without this the guard skips CREATE TABLE after DROP.
+        conversation._store._tables_ensured.discard(f"conv_{safe}")
+        self._sqlite.delete_user(user_id)
+        self._chroma.delete_collection(user_id)
 
     # ── internal ────────────────────────────────────────────────────────────
 

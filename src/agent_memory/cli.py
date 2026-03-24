@@ -32,11 +32,10 @@ from rich.panel import Panel
 from rich.rule import Rule
 
 from agent_memory.config import MemoryConfig
-from agent_memory.storage.sqlite_store import SQLiteStore
-from agent_memory.storage.chroma_store import ChromaStore
+from agent_memory.engine import MemoryEngine
 from agent_memory.providers.base import BaseLLMProvider
-from agent_memory.chat_engine import process_message
 from agent_memory.layers import core, summary, conversation
+from agent_memory import context_assembler
 
 console = Console()
 
@@ -116,8 +115,7 @@ def print_memory_state(user_id: str) -> None:
 
 
 def reset_user(user_id: str, config: MemoryConfig) -> None:
-    SQLiteStore(config.db_path).delete_user(user_id)
-    ChromaStore(config.chroma_path).delete_collection(user_id)
+    MemoryEngine(config=config).reset_user(user_id)
     console.print(f"[yellow]⚠ Memory wiped for user '{user_id}'[/yellow]")
 
 
@@ -125,13 +123,17 @@ def reset_user(user_id: str, config: MemoryConfig) -> None:
 
 async def chat_loop(user_id: str, provider_name: str, api_key: str, model: str | None, debug: bool) -> None:
     config = MemoryConfig.from_env()
-    _seed_user_name(user_id)
 
     try:
         provider = _build_provider(provider_name, api_key, model, config)
     except ImportError as e:
         console.print(f"[red]{e}[/red]")
         return
+
+    # MemoryEngine rebinds module-level layer stores to use config paths, so
+    # create it before any layer calls (including _seed_user_name below).
+    engine = MemoryEngine(config=config, provider=provider)
+    _seed_user_name(user_id)
 
     model_label = model or {"ollama": config.model, "openai": "gpt-4o", "anthropic": "claude-sonnet-4-6"}.get(provider_name, provider_name)
     print_banner(user_id, provider_name, model_label)
@@ -164,7 +166,8 @@ async def chat_loop(user_id: str, provider_name: str, api_key: str, model: str |
             continue
 
         if user_input.lower() == "/reset":
-            reset_user(user_id, config)
+            engine.reset_user(user_id)
+            console.print(f"[yellow]⚠ Memory wiped for user '{user_id}'[/yellow]")
             continue
 
         if user_input.lower() == "/help":
@@ -174,24 +177,28 @@ async def chat_loop(user_id: str, provider_name: str, api_key: str, model: str |
             )
             continue
 
+        if debug:
+            stats = context_assembler.get_context_stats(user_id, user_input, config)
+            console.print(
+                f"\n  [dim][CTX] {stats['total_tokens']}/{stats['budget']} tokens | "
+                f"{stats['total_messages']} messages in context[/dim]\n"
+            )
+
         console.print(f"\n[bold green]Assistant:[/bold green] ", end="")
 
         try:
-            cleaned_response, memory_actions = await process_message(
+            result = await engine.process_message(
                 user_id=user_id,
                 user_message=user_input,
                 stream=True,
-                show_stats=debug,
-                config=config,
-                provider=provider,
             )
         except Exception as e:
             console.print(f"\n[red]Error: {e}[/red]")
             continue
 
-        if memory_actions:
+        if result.memory_actions:
             console.print()
-            for action in memory_actions:
+            for action in result.memory_actions:
                 icon = {"remember": "📌", "note": "📝", "name": "👤"}.get(action.type, "•")
                 console.print(f"  [dim]{icon} {action}[/dim]")
 

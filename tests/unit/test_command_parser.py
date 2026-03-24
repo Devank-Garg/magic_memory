@@ -22,7 +22,7 @@ def test_remember_command_parsed():
     cleaned, actions, mock_core = _parse(
         "Sure! [REMEMBER: likes dark mode]"
     )
-    mock_core.update_fact.assert_called_once_with("test_user", "likes dark mode")
+    mock_core.update_fact.assert_called_once_with("test_user", "likes dark mode", None)
     assert "likes dark mode" not in cleaned
     assert len(actions) == 1
 
@@ -32,7 +32,7 @@ def test_note_command_parsed():
         "Got it. [NOTE: currently debugging a RAG pipeline]"
     )
     mock_core.update_scratch.assert_called_once_with(
-        "test_user", "currently debugging a RAG pipeline"
+        "test_user", "currently debugging a RAG pipeline", None
     )
     assert len(actions) == 1
 

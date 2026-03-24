@@ -19,7 +19,12 @@ from agent_memory.storage.sqlite_store import SQLiteStore
 _store = SQLiteStore(MemoryConfig().db_path)
 
 
+_SUMMARY_TABLE_KEY = "summaries"
+
+
 def _ensure_table(conn) -> None:
+    if _SUMMARY_TABLE_KEY in _store._tables_ensured:
+        return
     conn.execute("""
         CREATE TABLE IF NOT EXISTS summaries (
             user_id    TEXT PRIMARY KEY,
@@ -27,6 +32,7 @@ def _ensure_table(conn) -> None:
             turn_count INTEGER NOT NULL DEFAULT 0
         )
     """)
+    _store._tables_ensured.add(_SUMMARY_TABLE_KEY)
 
 
 def load(user_id: str) -> dict:

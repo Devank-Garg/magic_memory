@@ -157,6 +157,47 @@ Each entry maps to a phase and a specific task.
 
 ---
 
+## Phase 8 — Bug fixes (code review)
+*Addresses 7 bugs found during post-refactor code review.*
+
+**Bugs fixed:**
+
+| Issue | Description | Fix |
+|---|---|---|
+| #9 | `MemoryEngine` config not propagated to layers — layers bound `_store` at import time using default `MemoryConfig()`, so any custom `db_path` / `chroma_path` passed to `MemoryEngine` was silently ignored | `MemoryEngine.__init__` now creates `SQLiteStore` and `ChromaStore` from its own config and rebinds the module-level `_store` / `_chroma` / `_cfg` in each layer. `core.update_fact` and `core.update_scratch` accept an optional `config` arg; `parse_and_apply` forwards it from the engine. |
+| #10 | `MemoryConfig.from_env()` silently dropped numeric/float env vars set to `0` — `if v := _int(k):` treats `0` as falsy | Changed all walrus-based guards to `if (v := ...) is not None:` |
+| #11 | Empty/blank `user_id` mapped to bare table name `conv_` causing all callers with empty IDs to share data | `SQLiteStore._safe()` and `ChromaStore._safe()` now raise `ValueError` for empty/blank user IDs |
+| #12 | `response_reserve` field defined in `MemoryConfig` but never subtracted from the token budget in `context_assembler` | `build_context` now starts with `budget = config.token_budget - config.response_reserve` |
+| #13 | No error boundary around `parse_and_apply` in `engine.process_message` — a parser crash (e.g. unusual LLM output) would abort the entire pipeline | Wrapped in `try/except`; on failure logs a warning and returns the raw response with empty `memory_actions` |
+| #14 | `_ensure_table` issued `CREATE TABLE IF NOT EXISTS` SQL on every single DB read/write | Added `_tables_ensured: set[str]` to `SQLiteStore`; each layer's `_ensure_table` helper now skips the SQL if the table has already been ensured in this process |
+| #15 | CLI imported and called `chat_engine.process_message` — a parallel orchestration path that duplicated all of `MemoryEngine.process_message` and would diverge | `cli.py` now imports `MemoryEngine` directly; `chat_engine.py` retained as a legacy shim but no longer on the main code path |
+
+**Modified files:**
+
+| File | Change |
+|---|---|
+| `src/agent_memory/engine.py` | Own `SQLiteStore` + `ChromaStore` instances; rebind layer module-level singletons on init (#9); pass config to `parse_and_apply` (#9); `try/except` around parser (#13); `reset_user` uses owned stores |
+| `src/agent_memory/layers/core.py` | `update_fact` + `update_scratch` accept optional `config` param (#9); `_ensure_table` one-shot guard (#14) |
+| `src/agent_memory/command_parser.py` | `parse_and_apply` accepts optional `config` param and forwards to core functions (#9) |
+| `src/agent_memory/config.py` | `from_env()` walrus guards use `is not None` (#10) |
+| `src/agent_memory/storage/sqlite_store.py` | `_safe()` raises on empty user_id (#11); `_tables_ensured` set added (#14) |
+| `src/agent_memory/storage/chroma_store.py` | `_safe()` raises on empty user_id (#11) |
+| `src/agent_memory/context_assembler.py` | Subtract `response_reserve` from initial budget (#12) |
+| `src/agent_memory/layers/conversation.py` | `_ensure_table` one-shot guard (#14) |
+| `src/agent_memory/layers/summary.py` | `_ensure_table` one-shot guard (#14) |
+| `src/agent_memory/cli.py` | Import and use `MemoryEngine` directly; remove `chat_engine` dependency (#15) |
+
+**New tests:**
+
+| File | What it tests |
+|---|---|
+| `tests/unit/test_engine.py` | `test_engine_uses_configured_db_path` — custom db_path respected (#9); `test_engine_config_respected_by_update_fact` — max_facts cap honoured (#9); `test_process_message_handles_parser_error` — parser crash returns raw response (#13) |
+| `tests/unit/test_config.py` | `test_from_env_zero_numeric_not_dropped` — zero values not silently dropped (#10) |
+| `tests/unit/test_sqlite_store.py` | Empty/blank user_id raises ValueError (#11); normal sanitization; `delete_user` roundtrip |
+| `tests/unit/test_context_assembler.py` | `test_response_reserve_reduces_history_budget` — reserve shrinks available history tokens (#12) |
+
+---
+
 ## Phase 7 — Packaging
 *Completed. 8 new tests (66 passing, 82% coverage).*
 

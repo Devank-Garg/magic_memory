@@ -30,7 +30,9 @@ def build_context(user_id: str, current_user_message: str, config: MemoryConfig 
     Returns: list of {role, content} ready to send to Ollama
     """
     config = config or MemoryConfig()
-    budget = config.token_budget
+    # Reserve tokens for the model's response before distributing to context.
+    # response_reserve was defined but never subtracted — fixing that here.
+    budget = config.token_budget - config.response_reserve
     messages = []
 
     # ── 1. SYSTEM PROMPT (Core Memory) — always present ───────────────────────

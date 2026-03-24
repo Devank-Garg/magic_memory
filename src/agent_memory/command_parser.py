@@ -10,6 +10,7 @@ Commands the LLM can issue (at end of response):
 """
 
 import re
+from agent_memory.config import MemoryConfig
 from agent_memory.layers import core
 from agent_memory.types import MemoryAction
 
@@ -27,7 +28,11 @@ _MARKDOWN_COMMAND_PATTERN = re.compile(
 )
 
 
-def parse_and_apply(user_id: str, response_text: str) -> tuple[str, list[MemoryAction]]:
+def parse_and_apply(
+    user_id: str,
+    response_text: str,
+    config: MemoryConfig | None = None,
+) -> tuple[str, list[MemoryAction]]:
     """
     Extract and apply memory commands from LLM response.
 
@@ -43,11 +48,11 @@ def parse_and_apply(user_id: str, response_text: str) -> tuple[str, list[MemoryA
         cmd_value = cmd_value.strip()
 
         if cmd_type == "REMEMBER":
-            core.update_fact(user_id, cmd_value)
+            core.update_fact(user_id, cmd_value, config)
             actions.append(MemoryAction(type="remember", value=cmd_value))
 
         elif cmd_type == "NOTE":
-            core.update_scratch(user_id, cmd_value)
+            core.update_scratch(user_id, cmd_value, config)
             actions.append(MemoryAction(type="note", value=cmd_value))
 
         elif cmd_type == "NAME":

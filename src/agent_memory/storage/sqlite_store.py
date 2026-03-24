@@ -14,10 +14,19 @@ from pathlib import Path
 class SQLiteStore:
     def __init__(self, db_path: str | Path):
         self.db_path = Path(db_path)
+        # Tracks which table CREATE IF NOT EXISTS calls have already run so
+        # layers can skip them on subsequent calls within the same process.
+        self._tables_ensured: set[str] = set()
 
     @staticmethod
     def _safe(user_id: str) -> str:
-        """Sanitize user_id for use as a table-name suffix."""
+        """Sanitize user_id for use as a table-name suffix.
+
+        Raises ValueError for empty/blank user_ids, which would produce a bare
+        ``conv_`` table that all callers with empty IDs would share.
+        """
+        if not user_id or not user_id.strip():
+            raise ValueError(f"user_id must not be empty, got {user_id!r}")
         return "".join(c if c.isalnum() else "_" for c in user_id)
 
     @contextlib.contextmanager
@@ -45,11 +54,20 @@ class SQLiteStore:
         Replaces the duplicated _safe() + raw SQL in main.py reset_user().
         """
         safe = self._safe(user_id)
+        conv_key = f"conv_{safe}"
         with self.connection() as conn:
-            conn.execute(f"DROP TABLE IF EXISTS conv_{safe}")
-            conn.execute(
-                "DELETE FROM core_memory WHERE user_id = ?", (user_id,)
-            )
-            conn.execute(
-                "DELETE FROM summaries WHERE user_id = ?", (user_id,)
-            )
+            conn.execute(f"DROP TABLE IF EXISTS {conv_key}")
+            # core_memory and summaries may not exist yet (e.g. brand-new db
+            # that only ever wrote conversation messages). Guard each DELETE.
+            for shared_table in ("core_memory", "summaries"):
+                exists = conn.execute(
+                    "SELECT 1 FROM sqlite_master WHERE type='table' AND name=?",
+                    (shared_table,),
+                ).fetchone()
+                if exists:
+                    conn.execute(
+                        f"DELETE FROM {shared_table} WHERE user_id = ?", (user_id,)
+                    )
+        # The conversation table was dropped; remove it from the ensured-set so
+        # _ensure_table will recreate it if this user_id is used again.
+        self._tables_ensured.discard(conv_key)

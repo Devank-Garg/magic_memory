@@ -46,6 +46,18 @@ def test_from_env_overrides(monkeypatch):
     assert cfg.timeout == 30.0
 
 
+def test_from_env_zero_numeric_not_dropped(monkeypatch):
+    """Setting a numeric env var to 0 must override the default, not be ignored.
+    Previously `if v := _int(k):` treated 0 as falsy and silently fell back."""
+    monkeypatch.setenv("AGENT_MEMORY_TOKEN_BUDGET", "0")
+    monkeypatch.setenv("AGENT_MEMORY_ARCHIVAL_TOP_K", "0")
+    monkeypatch.setenv("AGENT_MEMORY_ARCHIVAL_THRESHOLD", "0.0")
+    cfg = MemoryConfig.from_env()
+    assert cfg.token_budget == 0
+    assert cfg.archival_top_k == 0
+    assert cfg.archival_similarity_threshold == 0.0
+
+
 def test_from_env_path_overrides(monkeypatch, tmp_path):
     """DB and chroma paths are converted to Path objects."""
     monkeypatch.setenv("AGENT_MEMORY_DB_PATH", str(tmp_path / "mem.db"))

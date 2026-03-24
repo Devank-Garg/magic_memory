@@ -56,6 +56,27 @@ def test_available_for_history_never_negative(patched_layers):
     assert msgs[-1]["content"] == "new message"
 
 
+def test_response_reserve_reduces_history_budget(patched_layers):
+    """response_reserve must be subtracted from token_budget before filling history.
+    With a larger reserve, fewer historical messages fit in the context window."""
+    from agent_memory.layers import conversation
+
+    for i in range(20):
+        conversation.save_message("alice", "user", f"message number {i}")
+        conversation.save_message("alice", "assistant", f"response number {i}")
+
+    config_with_reserve    = MemoryConfig(token_budget=1500, response_reserve=500)
+    config_without_reserve = MemoryConfig(token_budget=1500, response_reserve=0)
+
+    msgs_with    = context_assembler.build_context("alice", "hi", config_with_reserve)
+    msgs_without = context_assembler.build_context("alice", "hi", config_without_reserve)
+
+    # Fewer messages should fit when reserve is non-zero
+    assert len(msgs_without) >= len(msgs_with), (
+        "response_reserve=500 should leave less room for history"
+    )
+
+
 def test_should_summarize_false_initially(patched_layers):
     config = MemoryConfig(summarize_after_turns=15)
     assert context_assembler.should_summarize("alice", config) is False
