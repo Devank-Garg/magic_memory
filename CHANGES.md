@@ -158,16 +158,21 @@ Each entry maps to a phase and a specific task.
 ---
 
 ## Phase 7 — Packaging
-*Planned.*
+*Completed. 8 new tests (66 passing, 82% coverage).*
 
 **Goal:** Make the library installable as `pip install agent-memory` with optional provider extras, add type information, and enforce a coverage gate.
 
-**Tasks:**
-
 | Task | Change |
 |---|---|
-| Optional deps | Add `openai` and `anthropic` extras to `pyproject.toml` — `pip install agent-memory[openai]`, `pip install agent-memory[anthropic]` |
-| `py.typed` | Add empty `src/agent_memory/py.typed` marker so mypy/pyright recognise the package as typed |
-| Coverage gate | Add `pytest-cov` to dev deps; set `--cov-fail-under=80` in `pyproject.toml` |
-| Dead file cleanup | Delete orphaned `ollama_client.py` from repo root (replaced by `OllamaProvider` in Phase 4) |
+| Optional deps | Added `openai = ["openai>=1.0.0"]` and `anthropic = ["anthropic>=0.20.0"]` extras to `pyproject.toml` — `pip install agent-memory[openai]`, `pip install agent-memory[anthropic]` |
+| `py.typed` | Added empty `src/agent_memory/py.typed` marker + `[tool.setuptools.package-data]` entry so mypy/pyright recognise the package as typed |
+| Coverage gate | `[tool.pytest.ini_options] addopts = "--cov=agent_memory --cov-fail-under=80"`; `[tool.coverage.run]` config added; 82% coverage achieved |
+| Dead file cleanup | Deleted orphaned root `ollama_client.py` (replaced by `OllamaProvider` in Phase 4) |
 | Version bump | `pyproject.toml` version `0.1.0` → `0.2.0` |
+
+**New tests:**
+
+| File | What it tests |
+|---|---|
+| `tests/unit/test_config.py` | `MemoryConfig.from_env()` — defaults, all env var overrides, path coercion |
+| `tests/unit/test_token_counter.py` | `count_tokens`, `count_messages_tokens` — empty input, overhead accounting, missing content key |
