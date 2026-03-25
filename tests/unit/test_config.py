@@ -58,6 +58,19 @@ def test_from_env_zero_numeric_not_dropped(monkeypatch):
     assert cfg.archival_similarity_threshold == 0.0
 
 
+def test_from_env_system_prompt(monkeypatch):
+    """AGENT_MEMORY_SYSTEM_PROMPT sets the custom system prompt."""
+    monkeypatch.setenv("AGENT_MEMORY_SYSTEM_PROMPT", "You are a pirate.")
+    cfg = MemoryConfig.from_env()
+    assert cfg.system_prompt == "You are a pirate."
+
+
+def test_system_prompt_none_by_default():
+    """system_prompt defaults to None so the built-in BEHAVIOUR block is used."""
+    cfg = MemoryConfig()
+    assert cfg.system_prompt is None
+
+
 def test_from_env_path_overrides(monkeypatch, tmp_path):
     """DB and chroma paths are converted to Path objects."""
     monkeypatch.setenv("AGENT_MEMORY_DB_PATH", str(tmp_path / "mem.db"))

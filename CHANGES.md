@@ -157,6 +157,50 @@ Each entry maps to a phase and a specific task.
 
 ---
 
+## Phase 9 — Custom system prompt support
+*Allows library consumers and framework integrations (LangChain, etc.) to supply their own system instructions without forking the assembler.*
+
+**Design:**
+The system prompt has two distinct parts:
+1. **Memory context** (always generated from layers — core memory, rolling summary, archival results) — never overridable, ensures the memory system works regardless.
+2. **Behaviour instructions** (previously hardcoded in `context_assembler.py`) — now fully configurable.
+
+**Changes:**
+
+| File | Change |
+|---|---|
+| `src/agent_memory/context_assembler.py` | Extracted hardcoded BEHAVIOUR + MEMORY COMMANDS block to module-level constant `DEFAULT_BEHAVIOUR_PROMPT`. `build_context` now uses `config.system_prompt` when set, falling back to `DEFAULT_BEHAVIOUR_PROMPT`. |
+| `src/agent_memory/config.py` | Added `system_prompt: str \| None = None` field. `from_env()` reads `AGENT_MEMORY_SYSTEM_PROMPT`. |
+| `src/agent_memory/__init__.py` | Exports `DEFAULT_BEHAVIOUR_PROMPT` so callers can compose on top of it. |
+
+**Usage examples:**
+
+```python
+# Full replacement — your own instructions, memory context still prepended
+config = MemoryConfig(system_prompt="You are a customer support agent for Acme Corp.")
+
+# Compose: keep the default memory commands, add your persona
+from agent_memory import DEFAULT_BEHAVIOUR_PROMPT
+config = MemoryConfig(
+    system_prompt=f"{DEFAULT_BEHAVIOUR_PROMPT}\n\nYou speak only in haiku."
+)
+
+# Via env var (useful for deployment / framework injection)
+# AGENT_MEMORY_SYSTEM_PROMPT="You are a strict JSON-only responder." agent-memory
+```
+
+**New tests:**
+
+| Test | What it verifies |
+|---|---|
+| `test_custom_system_prompt_replaces_default_behaviour` | Custom prompt appears; default `## BEHAVIOUR` block absent |
+| `test_default_behaviour_prompt_used_when_no_override` | Default behaviour injected when `system_prompt=None` |
+| `test_memory_context_always_prepended_with_custom_prompt` | `CORE MEMORY` block always present even with a custom prompt |
+| `test_from_env_system_prompt` | `AGENT_MEMORY_SYSTEM_PROMPT` env var is picked up |
+| `test_system_prompt_none_by_default` | Default is `None` (built-in behaviour applies) |
+
+---
+
 ## Phase 8 — Bug fixes (code review)
 *Addresses 7 bugs found during post-refactor code review.*
 

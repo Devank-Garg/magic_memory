@@ -22,6 +22,31 @@ from agent_memory.layers import core, summary, archival, conversation
 
 logger = logging.getLogger(__name__)
 
+# Default behaviour/instructions injected at the end of the system prompt.
+# Exported so callers can compose their own prompt on top of it:
+#
+#   from agent_memory.context_assembler import DEFAULT_BEHAVIOUR_PROMPT
+#   config = MemoryConfig(
+#       system_prompt=f"{DEFAULT_BEHAVIOUR_PROMPT}\n\nYou are a customer support agent for Acme Corp."
+#   )
+DEFAULT_BEHAVIOUR_PROMPT = """\
+## BEHAVIOUR
+- Respond naturally and concisely to what the user actually said.
+- Your memory context is background knowledge — do NOT recap, list, or discuss it
+  unless the user explicitly asks (e.g. "what do you know about me?").
+- Keep responses short unless the user asks for detail.
+
+## MEMORY COMMANDS
+After writing your full response, you may append ONE command on a new line:
+  [REMEMBER: <fact>]   — only for facts the user explicitly told you this turn
+  [NOTE: <text>]       — update your working notes
+  [NAME: <name>]       — only when the user directly tells you their name
+
+Rules:
+- ALWAYS write a natural reply first. A memory command must NEVER be your entire response.
+- If you store something, briefly acknowledge it in your reply (e.g. "Got it, I'll remember that!").
+- NEVER invent facts. NEVER wrap commands in markdown formatting."""
+
 
 def build_context(user_id: str, current_user_message: str, config: MemoryConfig = None) -> list[dict]:
     """
@@ -40,28 +65,16 @@ def build_context(user_id: str, current_user_message: str, config: MemoryConfig 
     summary_block  = summary.render_for_prompt(user_id)
     archival_block = archival.render_for_prompt(user_id, current_user_message)
 
+    # Behaviour block: use caller-supplied prompt if provided, else the default.
+    # The memory context blocks above are always prepended so the memory system
+    # works regardless of what instructions the user provides.
+    behaviour_block = config.system_prompt if config.system_prompt is not None else DEFAULT_BEHAVIOUR_PROMPT
+
     system_parts = [
         core_block,
-        "\n" + summary_block if summary_block else "",
+        "\n" + summary_block  if summary_block  else "",
         "\n" + archival_block if archival_block else "",
-        """
-## BEHAVIOUR
-- Respond naturally and concisely to what the user actually said.
-- Your memory context is background knowledge — do NOT recap, list, or discuss it
-  unless the user explicitly asks (e.g. "what do you know about me?").
-- Keep responses short unless the user asks for detail.
-
-## MEMORY COMMANDS
-After writing your full response, you may append ONE command on a new line:
-  [REMEMBER: <fact>]   — only for facts the user explicitly told you this turn
-  [NOTE: <text>]       — update your working notes
-  [NAME: <name>]       — only when the user directly tells you their name
-
-Rules:
-- ALWAYS write a natural reply first. A memory command must NEVER be your entire response.
-- If you store something, briefly acknowledge it in your reply (e.g. "Got it, I'll remember that!").
-- NEVER invent facts. NEVER wrap commands in markdown formatting.
-"""
+        "\n" + behaviour_block,
     ]
 
     system_prompt = "\n".join(p for p in system_parts if p)

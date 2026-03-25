@@ -77,6 +77,36 @@ def test_response_reserve_reduces_history_budget(patched_layers):
     )
 
 
+def test_custom_system_prompt_replaces_default_behaviour(patched_layers):
+    """MemoryConfig.system_prompt replaces the hardcoded BEHAVIOUR block."""
+    custom = "You are a pirate. Respond only in pirate speak."
+    config = MemoryConfig(token_budget=3000, system_prompt=custom)
+    msgs = context_assembler.build_context("alice", "hello", config)
+    system_content = msgs[0]["content"]
+    assert custom in system_content
+    assert "## BEHAVIOUR" not in system_content
+
+
+def test_default_behaviour_prompt_used_when_no_override(patched_layers):
+    """When system_prompt is None the default BEHAVIOUR block is injected."""
+    from agent_memory.context_assembler import DEFAULT_BEHAVIOUR_PROMPT
+    config = MemoryConfig(token_budget=3000, system_prompt=None)
+    msgs = context_assembler.build_context("alice", "hello", config)
+    system_content = msgs[0]["content"]
+    assert "## BEHAVIOUR" in system_content
+    assert DEFAULT_BEHAVIOUR_PROMPT in system_content
+
+
+def test_memory_context_always_prepended_with_custom_prompt(patched_layers):
+    """Core memory block must appear in the system prompt even with a custom
+    system_prompt — the memory layer must never be bypassed."""
+    config = MemoryConfig(token_budget=3000, system_prompt="Custom instructions only.")
+    msgs = context_assembler.build_context("alice", "hello", config)
+    system_content = msgs[0]["content"]
+    assert "CORE MEMORY" in system_content
+    assert "Custom instructions only." in system_content
+
+
 def test_should_summarize_false_initially(patched_layers):
     config = MemoryConfig(summarize_after_turns=15)
     assert context_assembler.should_summarize("alice", config) is False

@@ -46,6 +46,19 @@ class MemoryConfig:
     model:       str   = "ministral-3:3b"
     timeout:     float = 120.0
 
+    # ── System prompt override ──────────────────────────────────────────────────
+    # Replaces the default BEHAVIOUR + MEMORY COMMANDS block injected at the
+    # end of the system prompt.  The memory context (core memory, rolling
+    # summary, archival results) is always prepended regardless of this setting,
+    # so the memory system remains functional even with a fully custom prompt.
+    # Set via AGENT_MEMORY_SYSTEM_PROMPT env var or pass directly:
+    #
+    #   from agent_memory.context_assembler import DEFAULT_BEHAVIOUR_PROMPT
+    #   config = MemoryConfig(
+    #       system_prompt=DEFAULT_BEHAVIOUR_PROMPT + "\n\nYou are a support agent."
+    #   )
+    system_prompt: str | None = None
+
     def __post_init__(self):
         # Normalise paths so callers always get Path objects
         self.db_path     = Path(self.db_path)
@@ -75,5 +88,6 @@ class MemoryConfig:
         if (v := _str("AGENT_MEMORY_OLLAMA_BASE"))    is not None: kwargs["ollama_base"] = v
         if (v := _str("AGENT_MEMORY_MODEL"))          is not None: kwargs["model"] = v
         if (v := _flt("AGENT_MEMORY_TIMEOUT"))        is not None: kwargs["timeout"] = v
+        if (v := _str("AGENT_MEMORY_SYSTEM_PROMPT"))  is not None: kwargs["system_prompt"] = v
 
         return cls(**kwargs)
