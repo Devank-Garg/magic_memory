@@ -5,6 +5,47 @@ Each entry maps to a phase and a specific task.
 
 ---
 
+## Phase 10a — LangChain adapter, `build_system_prompt()`, examples, repo cleanup
+*Completed.*
+
+### A2 — Extract `build_system_prompt()` from `build_context()`
+
+| Task | Change |
+|---|---|
+| `src/agent_memory/context_assembler.py` | Extracted lines 63–92 of `build_context()` into new public function `build_system_prompt(user_id, current_user_message, config) -> str`. `build_context()` now calls it internally — no breaking change to existing callers. |
+| `src/agent_memory/__init__.py` | Added `build_system_prompt` to imports and `__all__`. Now importable as `from agent_memory import build_system_prompt`. |
+| `tests/unit/test_context_assembler.py` | Added 7 new tests: return type, core memory presence, default/custom behaviour block, consistency with `build_context()`, package-level export, default config. Total tests: 91, coverage: 86%. |
+
+### LangChain adapter — `agent_memory.integrations.langchain`
+
+| Task | Change |
+|---|---|
+| `src/agent_memory/integrations/__init__.py` | New package. Documents `AgentMemoryFullHistory` import path. |
+| `src/agent_memory/integrations/langchain.py` | New module. Single class `AgentMemoryFullHistory(BaseChatMessageHistory)` — persists every turn to SQLite, returns `[SystemMessage(all 4 layers)] + recent chat turns` via `build_system_prompt()`. `add_messages()` persists `HumanMessage`/`AIMessage`. `clear()` wipes SQLite + ChromaDB for the user. Raises `ImportError` with install instructions if `langchain-core` is not installed. |
+| `pyproject.toml` | Added `langchain = ["langchain-core>=0.2.0"]` optional extra. Added `*/agent_memory/integrations/*` to coverage omit list (optional dep, not testable without langchain-core installed). |
+
+### Examples
+
+| Task | Change |
+|---|---|
+| `examples/01_standalone_ollama.py` | New. `MemoryEngine` + `OllamaProvider`, no LangChain. Shows multi-turn chat, output parsing (`result.response`, `result.memory_actions`), memory state inspection, reset. |
+| `examples/02_standalone_openai.py` | New. `MemoryEngine` + `OpenAIProvider`, no LangChain. Same structure, loads `OPENAI_API_KEY` from `.env`. |
+| `examples/03_langchain_ollama.py` | New. `AgentMemoryFullHistory` + `ChatOllama`. Shows `chat()` (text in/out) and `chat_verbose()` (with token counts and model metadata from `resp.response_metadata`). |
+| `examples/04_langchain_openai.py` | New. `AgentMemoryFullHistory` + `ChatOpenAI`. Same structure as 03. |
+| `examples/langchain_example.py` | Removed — superseded by the four numbered examples above. |
+| `examples/langchain_plan.md` | Removed — planning doc, no longer needed. |
+
+### Repo cleanup
+
+| Task | Change |
+|---|---|
+| `chat_engine.py` (root) | Removed — stale pre-refactor duplicate of `src/agent_memory/chat_engine.py`. |
+| `ollama_client.py` (root) | Removed — stale pre-refactor file, superseded by `src/agent_memory/providers/ollama.py`. |
+| `cli/` (root) | Removed — stale pre-refactor directory, superseded by `src/agent_memory/cli.py`. |
+| `.gitignore` | Added `.env` (secrets) and `.coverage` (generated artifact). |
+
+---
+
 ## Phase 1 — Restructure into `src/agent_memory/` package layout
 *Completed. No logic changes.*
 

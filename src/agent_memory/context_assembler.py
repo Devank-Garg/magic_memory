@@ -48,6 +48,41 @@ Rules:
 - NEVER invent facts. NEVER wrap commands in markdown formatting."""
 
 
+def build_system_prompt(
+    user_id: str,
+    current_user_message: str,
+    config: MemoryConfig = None,
+) -> str:
+    """
+    Build the memory-enriched system prompt string for a given user and message.
+
+    Assembles: core memory + rolling summary + archival hits + behaviour block.
+    Useful for LangChain integration or any caller that needs just the system
+    prompt string without the full message list.
+
+    Returns: str — the complete system prompt ready to pass to an LLM.
+    """
+    config = config or MemoryConfig()
+
+    core_block     = core.render_for_prompt(user_id)
+    summary_block  = summary.render_for_prompt(user_id)
+    archival_block = archival.render_for_prompt(user_id, current_user_message)
+
+    # Behaviour block: use caller-supplied prompt if provided, else the default.
+    # Memory context blocks are always prepended so the memory system works
+    # regardless of what instructions the caller provides.
+    behaviour_block = config.system_prompt if config.system_prompt is not None else DEFAULT_BEHAVIOUR_PROMPT
+
+    system_parts = [
+        core_block,
+        "\n" + summary_block  if summary_block  else "",
+        "\n" + archival_block if archival_block else "",
+        "\n" + behaviour_block,
+    ]
+
+    return "\n".join(p for p in system_parts if p)
+
+
 def build_context(user_id: str, current_user_message: str, config: MemoryConfig = None) -> list[dict]:
     """
     Build the final messages list for the LLM call.
@@ -61,23 +96,7 @@ def build_context(user_id: str, current_user_message: str, config: MemoryConfig 
     messages = []
 
     # ── 1. SYSTEM PROMPT (Core Memory) — always present ───────────────────────
-    core_block     = core.render_for_prompt(user_id)
-    summary_block  = summary.render_for_prompt(user_id)
-    archival_block = archival.render_for_prompt(user_id, current_user_message)
-
-    # Behaviour block: use caller-supplied prompt if provided, else the default.
-    # The memory context blocks above are always prepended so the memory system
-    # works regardless of what instructions the user provides.
-    behaviour_block = config.system_prompt if config.system_prompt is not None else DEFAULT_BEHAVIOUR_PROMPT
-
-    system_parts = [
-        core_block,
-        "\n" + summary_block  if summary_block  else "",
-        "\n" + archival_block if archival_block else "",
-        "\n" + behaviour_block,
-    ]
-
-    system_prompt = "\n".join(p for p in system_parts if p)
+    system_prompt = build_system_prompt(user_id, current_user_message, config)
     system_tokens = count_tokens(system_prompt)
     budget -= system_tokens
 
