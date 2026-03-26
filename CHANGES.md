@@ -242,6 +242,221 @@ config = MemoryConfig(
 
 ---
 
+## Phase 10 — LangChain Ecosystem Integration
+*Planned. Zero LangChain deps exist today — this phase builds the full integration layer.*
+
+**Goal:** Make `agent_memory` a first-class citizen in the LangChain/LangGraph ecosystem without breaking any existing API. All integration code lives under `src/agent_memory/integrations/` so the core library stays dependency-free.
+
+---
+
+### Compatibility gap summary
+
+| agent_memory | LangChain equivalent | Gap |
+|---|---|---|
+| `list[dict]` `{"role","content"}` | `list[BaseMessage]` | Format mismatch |
+| `MemoryEngine.process_message()` | `RunnableWithMessageHistory` | Incompatible wiring |
+| `BaseLLMProvider.chat()` | `BaseChatModel` | Different contract |
+| `ChromaStore` (raw chromadb) | `langchain_chroma.Chroma` | Not swappable as retriever |
+| `conversation.get_recent_messages()` | `BaseChatMessageHistory.messages` | No common interface |
+| `archival.search()` | `VectorStoreRetriever.invoke()` | Not usable in LCEL chains |
+| — | `BaseTool` / `@tool` | Missing entirely |
+| — | `BaseStore` (LangGraph) | Missing entirely |
+
+---
+
+### New directory layout
+
+```
+src/agent_memory/integrations/
+├── __init__.py
+├── langchain/
+│   ├── __init__.py      # exports: AgentMemoryHistory, MemoryCommandCallback, create_memory_chain
+│   ├── history.py       # Task A1 — BaseChatMessageHistory adapter
+│   ├── context.py       # Task A2 — build_system_prompt() split + RunnableLambda
+│   ├── callbacks.py     # Task A3 — BaseCallbackHandler for [REMEMBER:] parsing
+│   ├── chain.py         # Task A4 — create_memory_chain() factory
+│   └── tools.py         # Task B1 + C1a — @tool set + as_langchain_retriever()
+└── langgraph/
+    ├── __init__.py
+    └── store.py         # Task D1 — BaseStore adapter
+```
+
+New extras in `pyproject.toml`:
+```toml
+langchain = ["langchain-core>=0.3.0", "langchain-chroma>=0.1.2"]
+langgraph  = ["langgraph>=0.2.0"]
+```
+
+---
+
+### Task A2 — Split `build_system_prompt()` from `build_context()`
+*Required before all other integration tasks. Unlocks the ability to inject the memory system prompt into any external LangChain chain without triggering a full LLM call.*
+
+**Problem:** `context_assembler.build_context()` does two unrelated things:
+1. Assembles the enriched system prompt (core memory + rolling summary + archival retrieval + behaviour block)
+2. Appends the sliding-window history and current user message
+
+LangChain's `RunnableWithMessageHistory` manages its own history injection. It only needs #1 — the system prompt block — handed to it as a string. There is currently no way to get that string without getting the entire `list[dict]` back.
+
+**Fix:** Extract step 1 into a new public function:
+
+```python
+def build_system_prompt(
+    user_id: str,
+    current_user_message: str,
+    config: MemoryConfig | None = None,
+) -> str:
+    """
+    Assemble the memory-enriched system prompt string without building the
+    full message list. Safe to call from LangChain integration code.
+
+    Always returns:
+      ## CORE MEMORY block      (Layer 1)
+      ## CONVERSATION SUMMARY   (Layer 2, if any)
+      ## RETRIEVED MEMORIES     (Layer 4 archival search against current_user_message)
+      behaviour / custom instructions block
+    """
+```
+
+`build_context()` is refactored to call `build_system_prompt()` internally — **no breaking change** to existing callers.
+
+**Files changed:**
+
+| File | Change |
+|---|---|
+| `src/agent_memory/context_assembler.py` | Extract `build_system_prompt(user_id, current_user_message, config) -> str`; refactor `build_context()` to call it |
+| `src/agent_memory/__init__.py` | Export `build_system_prompt` |
+| `tests/unit/test_context_assembler.py` | New tests: `build_system_prompt` returns correct blocks; `build_context` output unchanged after refactor |
+
+---
+
+### Task A1 — `AgentMemoryHistory(BaseChatMessageHistory)`
+*Bridges the conversation layer to LangChain's expected history interface.*
+
+**Implements:**
+- `messages` property → calls `conversation.get_recent_messages()`, converts `list[dict]` → `list[BaseMessage]`
+- `add_messages(messages)` → converts `list[BaseMessage]` → `list[dict]`, calls `conversation.save_message()`
+- `clear()` → calls `SQLiteStore.delete_user()`
+- `aadd_messages()` / `aget_messages()` async overrides (thin wrappers — layer is sync)
+
+**Dict ↔ BaseMessage mapping:**
+
+| dict `role` | BaseMessage subclass |
+|---|---|
+| `"user"` / `"human"` | `HumanMessage` |
+| `"assistant"` / `"ai"` | `AIMessage` |
+| `"system"` | `SystemMessage` |
+
+**Usage:**
+```python
+from agent_memory.integrations.langchain import AgentMemoryHistory
+
+history = AgentMemoryHistory(user_id="alice", config=MemoryConfig())
+# Use directly with RunnableWithMessageHistory:
+chain_with_history = RunnableWithMessageHistory(
+    chain,
+    lambda session_id: AgentMemoryHistory(user_id=session_id),
+    input_messages_key="input",
+    history_messages_key="history",
+)
+```
+
+---
+
+### Task A3 — `MemoryCommandCallback(BaseCallbackHandler)`
+*Runs `[REMEMBER:]` / `[NOTE:]` / `[NAME:]` command parsing on every LLM response inside a LangChain chain.*
+
+When LangChain drives the LLM call, `MemoryEngine.process_message()` is bypassed — the command parser never runs. This callback hooks `on_llm_end` to apply it:
+
+```python
+class MemoryCommandCallback(BaseCallbackHandler):
+    def on_llm_end(self, response: LLMResult, **kwargs) -> None:
+        text = response.generations[0][0].text
+        parse_and_apply(self.user_id, text, self.config)
+        # Also fires should_summarize() + _run_summarization() if threshold crossed
+```
+
+---
+
+### Task A4 — `create_memory_chain()` convenience factory
+*One-liner to wire a LangChain chain with full agent_memory support.*
+
+```python
+from agent_memory.integrations.langchain import create_memory_chain
+
+chain_with_memory = create_memory_chain(
+    chain=prompt | llm,
+    config=MemoryConfig(),
+)
+
+response = chain_with_memory.invoke(
+    {"input": "I prefer dark mode"},
+    config={"configurable": {"session_id": "alice"}}
+)
+```
+
+Internally creates `AgentMemoryHistory`, `MemoryCommandCallback`, and wires `RunnableWithMessageHistory`.
+
+---
+
+### Task B1 — Memory tool set (`@tool`)
+*Exposes memory operations as LangChain tools so tool-calling agents can proactively manage memory.*
+
+| Tool name | Wraps | Description |
+|---|---|---|
+| `search_memory` | `archival.render_for_prompt()` | Semantic search over all past messages |
+| `remember_fact` | `core.update_fact()` | Store an important user fact permanently |
+| `update_notes` | `core.update_scratch()` | Update working notes |
+| `set_user_name` | `core.set_user_name()` | Record the user's name |
+| `get_memory_state` | `engine.get_memory_state()` | Inspect all memory layers |
+| `reset_memory` | `engine.reset_user()` | Wipe all memory for a user |
+
+---
+
+### Task C1a — `as_langchain_retriever()` shim on `ChromaStore`
+*Exposes archival memory as a `VectorStoreRetriever` usable in LCEL chains without replacing ChromaStore internals.*
+
+```python
+retriever = chroma_store.as_langchain_retriever(user_id="alice", k=3)
+docs = retriever.invoke("what does the user prefer?")  # → list[Document]
+```
+
+---
+
+### Task D1 — `AgentMemoryStore(BaseStore)` for LangGraph
+*Maps the 4-layer memory system to LangGraph's namespace-based store interface, allowing LangGraph nodes to read and write memory via `store.put()` / `store.search()`.*
+
+**Namespace conventions:**
+
+| Namespace | Maps to |
+|---|---|
+| `("facts", user_id)` | Layer 1 core facts |
+| `("summary", user_id)` | Layer 2 rolling summary |
+| `("archival", user_id)` | Layer 4 ChromaDB (search only) |
+| `("conversation", user_id)` | Layer 0 raw log |
+
+```python
+from agent_memory.integrations.langgraph import AgentMemoryStore
+
+graph = builder.compile(store=AgentMemoryStore(config=MemoryConfig()))
+```
+
+---
+
+### Recommended implementation order
+
+| Order | Task | Unlocks |
+|---|---|---|
+| 1 | **A2** — `build_system_prompt()` split | All other integration tasks |
+| 2 | **A1** — `AgentMemoryHistory` | `RunnableWithMessageHistory` wiring |
+| 3 | **A3** — `MemoryCommandCallback` | `[REMEMBER:]` in LangChain flows |
+| 4 | **A4** — `create_memory_chain()` factory | One-liner integration |
+| 5 | **B1** — Memory tool set | Tool-calling agent support |
+| 6 | **C1a** — `as_langchain_retriever()` | Archival in LCEL retriever chains |
+| 7 | **D1** — `AgentMemoryStore` | LangGraph full compatibility |
+
+---
+
 ## Phase 7 — Packaging
 *Completed. 8 new tests (66 passing, 82% coverage).*
 
