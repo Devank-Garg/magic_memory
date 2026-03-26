@@ -18,6 +18,7 @@ dependencies = [
 cli = ["rich>=13.0.0"]
 openai = ["openai>=1.0.0"]
 anthropic = ["anthropic>=0.20.0"]
+langchain = ["langchain-core>=0.2.0"]
 dev = ["pytest>=8", "pytest-asyncio>=0.23", "pytest-cov>=5"]
 
 [project.scripts]
@@ -35,4 +36,4 @@ addopts = "--cov=agent_memory --cov-report=term-missing --cov-fail-under=80"
 
 [tool.coverage.run]
 source = ["src/agent_memory"]
-omit = ["*/tests/*", "*/agent_memory/cli.py", "*/agent_memory/chat_engine.py"]
+omit = ["*/tests/*", "*/agent_memory/cli.py", "*/agent_memory/chat_engine.py", "*/agent_memory/integrations/*"]

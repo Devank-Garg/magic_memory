@@ -118,3 +118,60 @@ def test_should_summarize_true_after_threshold(patched_layers):
     for i in range(5):
         conversation.save_message("alice", "user", f"msg {i}")
     assert context_assembler.should_summarize("alice", config) is True
+
+
+# ── build_system_prompt() tests ───────────────────────────────────────────────
+
+def test_build_system_prompt_returns_string(patched_layers):
+    """build_system_prompt must return a plain str."""
+    config = MemoryConfig(token_budget=3000)
+    result = context_assembler.build_system_prompt("alice", "hello", config)
+    assert isinstance(result, str)
+    assert len(result) > 0
+
+
+def test_build_system_prompt_contains_core_memory(patched_layers):
+    """Core memory block must always be present in the returned string."""
+    config = MemoryConfig(token_budget=3000)
+    result = context_assembler.build_system_prompt("alice", "hello", config)
+    assert "CORE MEMORY" in result
+
+
+def test_build_system_prompt_default_behaviour_block(patched_layers):
+    """Default BEHAVIOUR block is included when system_prompt is None."""
+    from agent_memory.context_assembler import DEFAULT_BEHAVIOUR_PROMPT
+    config = MemoryConfig(token_budget=3000, system_prompt=None)
+    result = context_assembler.build_system_prompt("alice", "hello", config)
+    assert DEFAULT_BEHAVIOUR_PROMPT in result
+    assert "## BEHAVIOUR" in result
+
+
+def test_build_system_prompt_custom_behaviour_replaces_default(patched_layers):
+    """Custom system_prompt replaces the default BEHAVIOUR block."""
+    custom = "You are a helpful assistant for Acme Corp."
+    config = MemoryConfig(token_budget=3000, system_prompt=custom)
+    result = context_assembler.build_system_prompt("alice", "hello", config)
+    assert custom in result
+    assert "## BEHAVIOUR" not in result
+
+
+def test_build_system_prompt_consistent_with_build_context(patched_layers):
+    """The system prompt returned by build_system_prompt must exactly match
+    the system message injected by build_context."""
+    config = MemoryConfig(token_budget=3000)
+    prompt_direct = context_assembler.build_system_prompt("alice", "hello", config)
+    msgs = context_assembler.build_context("alice", "hello", config)
+    system_msg = next(m for m in msgs if m["role"] == "system")
+    assert prompt_direct == system_msg["content"]
+
+
+def test_build_system_prompt_exported_from_package():
+    """build_system_prompt must be importable directly from agent_memory."""
+    from agent_memory import build_system_prompt  # noqa: F401
+
+
+def test_build_system_prompt_default_config(patched_layers):
+    """build_system_prompt works with no config argument (uses MemoryConfig defaults)."""
+    result = context_assembler.build_system_prompt("alice", "hi")
+    assert isinstance(result, str)
+    assert "CORE MEMORY" in result

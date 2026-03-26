@@ -55,12 +55,13 @@ python -m venv env && source env/bin/activate
 pip install -e ".[cli]"
 ```
 
-For OpenAI or Anthropic providers, install the extra:
+For OpenAI, Anthropic, or LangChain integration, install the relevant extra:
 
 ```bash
-pip install -e ".[cli,openai]"      # OpenAI
-pip install -e ".[cli,anthropic]"   # Anthropic
-pip install -e ".[cli,openai,anthropic]"  # both
+pip install -e ".[cli,openai]"               # OpenAI
+pip install -e ".[cli,anthropic]"            # Anthropic
+pip install -e ".[cli,langchain]"            # LangChain adapter
+pip install -e ".[cli,openai,anthropic]"     # all native providers
 ```
 
 ---
@@ -164,6 +165,51 @@ engine.reset_user("alice")  # wipe everything for this user
 
 ---
 
+## LangChain Integration
+
+Install the extra and import a single class:
+
+```bash
+pip install "agent-memory[langchain]"
+pip install langchain-ollama       # or langchain-openai / langchain-anthropic
+```
+
+```python
+from langchain_ollama import ChatOllama   # swap for ChatOpenAI / ChatAnthropic
+from langchain_core.prompts import ChatPromptTemplate, MessagesPlaceholder
+from langchain_core.runnables.history import RunnableWithMessageHistory
+from agent_memory.integrations.langchain import AgentMemoryFullHistory
+
+chain = RunnableWithMessageHistory(
+    ChatPromptTemplate.from_messages([
+        MessagesPlaceholder("history"),   # SystemMessage(memory) + chat turns
+        ("human", "{input}"),
+    ]) | ChatOllama(model="mistral"),
+    get_session_history=lambda sid: AgentMemoryFullHistory(sid),
+    input_messages_key="input",
+    history_messages_key="history",
+)
+
+resp = chain.invoke(
+    {"input": "I love Python."},
+    config={"configurable": {"session_id": "alice"}},
+)
+print(resp.content)           # plain text reply
+print(resp.usage_metadata)    # {"input_tokens": N, "output_tokens": N, ...}
+```
+
+`AgentMemoryFullHistory` injects all four memory layers as a `SystemMessage` automatically each turn — core facts, rolling summary, archival hits, and behaviour instructions. See `examples/` for full working scripts.
+
+Also exported for standalone use in custom chains:
+
+```python
+from agent_memory import build_system_prompt
+
+system_prompt: str = build_system_prompt("alice", current_user_message, config)
+```
+
+---
+
 ## Configuration
 
 Pass a `MemoryConfig` when constructing `MemoryEngine`, or let the CLI pick it up via `MemoryConfig.from_env()`.
@@ -247,6 +293,7 @@ magic_memory/
 │       ├── config.py           # MemoryConfig dataclass
 │       ├── cli.py              # agent-memory console script
 │       ├── chat_engine.py      # CLI orchestration layer
+│       ├── context_assembler.py# build_context(), build_system_prompt()
 │       ├── types.py            # MemoryAction, MemoryResponse, MemoryState
 │       ├── layers/
 │       │   ├── conversation.py # Layer 0: SQLite raw log
@@ -259,11 +306,17 @@ magic_memory/
 │       │   ├── openai.py       # OpenAIProvider
 │       │   ├── anthropic.py    # AnthropicProvider
 │       │   └── registry.py     # create_provider() factory
+│       ├── integrations/
+│       │   └── langchain.py    # AgentMemoryFullHistory — BaseChatMessageHistory adapter
 │       └── storage/
 │           ├── sqlite_store.py
 │           └── chroma_store.py
-├── tests/                      # 66 unit tests, 82% coverage
-├── examples/                   # LangChain adapter, usage examples
+├── tests/                      # 91 unit tests, 86% coverage
+├── examples/
+│   ├── 01_standalone_ollama.py # MemoryEngine + Ollama, no LangChain
+│   ├── 02_standalone_openai.py # MemoryEngine + OpenAI, no LangChain
+│   ├── 03_langchain_ollama.py  # AgentMemoryFullHistory + ChatOllama
+│   └── 04_langchain_openai.py  # AgentMemoryFullHistory + ChatOpenAI
 ├── main.py                     # thin shim → agent_memory.cli:main
 ├── CHANGES.md                  # per-phase change log
 └── pyproject.toml
@@ -276,7 +329,7 @@ magic_memory/
 ```bash
 source env/bin/activate
 python -m pytest tests/ -v
-# 66 passed, 2 skipped — coverage ≥ 80% enforced
+# 91 passed — coverage ≥ 80% enforced (currently 86%)
 ```
 
 ---
@@ -293,4 +346,5 @@ python -m pytest tests/ -v
 | 6 | CLI — `--provider` flag, multi-provider support | ✅ Done |
 | 7 | Packaging — optional extras, `py.typed`, coverage gate, v0.2.0 | ✅ Done |
 | 8 | PyPI publish + multi-user abstractions (`BaseStore`, `BaseVectorStore`) | ⬜ Planned |
-| 10 | LangChain ecosystem integration — LCEL history adapter, tools, LangGraph store | ⬜ Planned |
+| 10a | LangChain adapter — `AgentMemoryFullHistory`, `build_system_prompt()`, `[langchain]` extra | ✅ Done |
+| 10b | LangChain tools, LangGraph store integration | ⬜ Planned |

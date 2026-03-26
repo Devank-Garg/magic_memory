@@ -21,3 +21,7 @@ data/
 # Misc
 *.log
 .DS_Store
+.coverage
+
+# Secrets
+.env
