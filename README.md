@@ -292,4 +292,5 @@ python -m pytest tests/ -v
 | 5 | `MemoryEngine` — clean public API, fix token budget overflow | ✅ Done |
 | 6 | CLI — `--provider` flag, multi-provider support | ✅ Done |
 | 7 | Packaging — optional extras, `py.typed`, coverage gate, v0.2.0 | ✅ Done |
-| 8 | PyPI publish + multi-user abstractions (`BaseStore`, `BaseVectorStore`) | ⬜ Next |
+| 8 | PyPI publish + multi-user abstractions (`BaseStore`, `BaseVectorStore`) | ⬜ Planned |
+| 10 | LangChain ecosystem integration — LCEL history adapter, tools, LangGraph store | ⬜ Planned |
